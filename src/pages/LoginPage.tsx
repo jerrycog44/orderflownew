@@ -34,7 +34,7 @@ export const LoginPage: React.FC = () => {
     if (!validate()) return;
 
     setIsSubmitting(true);
-    const { error } = await login({ email: formData.email, password: formData.password });
+    const { user: loggedInUser, error } = await login({ email: formData.email, password: formData.password });
     setIsSubmitting(false);
 
     if (error) {
@@ -42,8 +42,19 @@ export const LoginPage: React.FC = () => {
       return;
     }
 
-    // Navigate to the intended page or let AuthContext/router handle it
-    navigate(from || '/', { replace: true });
+    if (loggedInUser) {
+      let dest = from;
+      if (!dest) {
+        if (!loggedInUser.role) {
+          dest = '/role-selection';
+        } else if (!loggedInUser.onboardingCompleted) {
+          dest = loggedInUser.role === 'vendor' ? '/onboarding/vendor' : '/onboarding/provider';
+        } else {
+          dest = loggedInUser.role === 'vendor' ? '/vendor/dashboard' : '/logistics/dashboard';
+        }
+      }
+      navigate(dest, { replace: true });
+    }
   };
 
   const handleChange = (field: string, value: string) => {

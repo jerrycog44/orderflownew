@@ -34,7 +34,7 @@ interface AuthContextValue {
 
   // Actions
   signUp: (input: SignUpInput) => Promise<{ error: AuthError | null }>;
-  login: (input: LoginInput) => Promise<{ error: AuthError | null }>;
+  login: (input: LoginInput) => Promise<{ user: User | null; error: AuthError | null }>;
   forgotPassword: (input: ForgotPasswordInput) => Promise<{ error: AuthError | null }>;
   setRole: (role: UserRole) => Promise<{ error: AuthError | null }>;
   completeVendorOnboarding: (
@@ -71,12 +71,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { error };
   }, []);
 
-  const login = useCallback(async (input: LoginInput): Promise<{ error: AuthError | null }> => {
+  const login = useCallback(async (input: LoginInput): Promise<{ user: User | null; error: AuthError | null }> => {
     const { session, error } = await authService.login(input);
     if (session) {
       setUser(session.user);
     }
-    return { error };
+    return { user: session?.user ?? null, error };
   }, []);
 
   const forgotPassword = useCallback(
