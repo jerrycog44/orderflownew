@@ -1,0 +1,110 @@
+.of-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.of-form-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.of-input-wrapper,
+.of-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.of-input,
+.of-select,
+.of-textarea {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.of-input:focus,
+.of-select:focus,
+.of-textarea:focus {
+  outline: none;
+  border-color: var(--color-brand-accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.of-input.has-left-icon {
+  padding-left: 2.5rem;
+}
+
+.of-input.has-right-icon {
+  padding-right: 2.5rem;
+}
+
+.of-input-icon-left {
+  position: absolute;
+  left: 0.875rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.of-input-icon-right {
+  position: absolute;
+  right: 0.875rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.of-select-wrapper {
+  appearance: none;
+}
+
+.of-select {
+  padding-right: 2.5rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.of-select-arrow {
+  position: absolute;
+  right: 0.875rem;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+
+.of-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.of-input-error {
+  border-color: var(--color-status-error-border) !important;
+}
+
+.of-input-error:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15) !important;
+}
+
+.of-form-error-msg {
+  font-size: var(--font-size-xs);
+  color: var(--color-status-error-text);
+  margin-top: 0.25rem;
+}
+
+.of-form-helper-msg {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-top: 0.25rem;
+}

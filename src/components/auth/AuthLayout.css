@@ -1,0 +1,186 @@
+.of-auth-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-app);
+}
+
+.of-auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-bg-surface);
+}
+
+.of-auth-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  text-decoration: none;
+}
+
+.of-auth-logo-icon {
+  width: 32px;
+  height: 32px;
+  background-color: var(--color-brand-primary);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.of-auth-logo-text {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-brand-primary);
+  letter-spacing: -0.03em;
+}
+
+.of-auth-logo-accent {
+  color: var(--color-brand-accent);
+}
+
+.of-auth-back-link {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.of-auth-back-link:hover {
+  color: var(--color-text-primary);
+}
+
+.of-auth-main {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .of-auth-main {
+    align-items: center;
+    padding: var(--space-12) var(--space-6);
+  }
+}
+
+.of-auth-card {
+  width: 100%;
+  max-width: 480px;
+  background-color: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-8) var(--space-6);
+}
+
+@media (min-width: 640px) {
+  .of-auth-card {
+    padding: var(--space-10) var(--space-8);
+  }
+}
+
+.of-auth-footer {
+  padding: var(--space-5) var(--space-6);
+  text-align: center;
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.of-auth-footer p {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.of-auth-footer a {
+  color: var(--color-text-muted);
+  transition: color var(--transition-fast);
+}
+
+.of-auth-footer a:hover {
+  color: var(--color-text-secondary);
+}
+
+/* ---- Shared auth form building blocks ---- */
+
+.of-auth-heading {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: -0.025em;
+  margin-bottom: var(--space-2);
+}
+
+.of-auth-subheading {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-8);
+  line-height: var(--line-height-relaxed);
+}
+
+.of-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.of-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+.of-auth-divider::before,
+.of-auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--color-border-default);
+}
+
+.of-auth-divider span {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+.of-auth-switch-text {
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-4);
+}
+
+.of-auth-switch-text a,
+.of-auth-link {
+  color: var(--color-brand-accent);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  transition: color var(--transition-fast);
+}
+
+.of-auth-switch-text a:hover,
+.of-auth-link:hover {
+  color: var(--color-brand-accent-hover);
+}
+
+.of-auth-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-status-error-bg);
+  border: 1px solid var(--color-status-error-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-status-error-text);
+}

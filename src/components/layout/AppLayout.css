@@ -1,0 +1,112 @@
+.of-app-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-bg-app);
+}
+
+.of-app-header {
+  background-color: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  height: 64px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.of-app-header-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.of-app-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.of-app-workspace-badge {
+  font-size: 11px;
+}
+
+.of-app-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.of-app-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.of-app-nav-link:hover {
+  background-color: var(--color-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.of-app-nav-link.active {
+  background-color: var(--color-brand-accent-light);
+  color: var(--color-brand);
+}
+
+.of-app-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.of-app-user-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.of-app-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full);
+  background-color: var(--color-brand-accent-light);
+  color: var(--color-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.of-app-user-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.of-app-user-name {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  line-height: 1.2;
+}
+
+.of-app-user-email {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  line-height: 1.2;
+}
+
+#app-main-content {
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .of-app-user-details {
+    display: none;
+  }
+}

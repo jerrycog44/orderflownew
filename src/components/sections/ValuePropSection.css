@@ -1,0 +1,44 @@
+.of-prop-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-6);
+}
+
+@media (min-width: 640px) {
+  .of-prop-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.of-prop-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.of-prop-header {
+  margin-bottom: var(--space-4);
+}
+
+.of-prop-icon-box {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-brand-accent-light);
+  color: var(--color-brand-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.of-prop-title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.of-prop-desc {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+}
