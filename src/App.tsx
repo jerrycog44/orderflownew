@@ -26,9 +26,13 @@ import { RoleSelectionPage } from './pages/RoleSelectionPage';
 import { VendorOnboardingPage } from './pages/VendorOnboardingPage';
 import { ProviderOnboardingPage } from './pages/ProviderOnboardingPage';
 
-// Dashboard placeholders
+// Dashboards
 import { VendorDashboardPage } from './pages/VendorDashboardPage';
 import { ProviderDashboardPage } from './pages/ProviderDashboardPage';
+
+// Phase 3 Delivery Pages
+import { CreateDeliveryPage } from './pages/CreateDeliveryPage';
+import { VendorDeliveryDetailPage } from './pages/VendorDeliveryDetailPage';
 
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 
@@ -115,6 +119,22 @@ export function App() {
                 element={
                   <ProtectedRoute requiredRole="vendor" onboardingOnly={false}>
                     <VendorDashboardPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/vendor/deliveries/create"
+                element={
+                  <ProtectedRoute requiredRole="vendor" onboardingOnly={false}>
+                    <CreateDeliveryPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/vendor/deliveries/:id"
+                element={
+                  <ProtectedRoute requiredRole="vendor" onboardingOnly={false}>
+                    <VendorDeliveryDetailPage />
                   </ProtectedRoute>
                 }
               />

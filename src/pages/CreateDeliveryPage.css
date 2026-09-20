@@ -1,0 +1,44 @@
+/* Create Delivery Wizard Page Layout */
+
+.of-create-delivery-container {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4);
+}
+
+.of-create-delivery-header {
+  margin-bottom: var(--space-6);
+}
+
+.of-create-delivery-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: var(--space-4);
+  transition: color var(--transition-fast);
+}
+
+.of-create-delivery-back-link:hover {
+  color: var(--color-brand-accent);
+}
+
+.of-create-delivery-title {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--space-1) 0;
+}
+
+.of-create-delivery-subtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}

@@ -1,0 +1,89 @@
+/* Step Indicator Styling */
+.of-step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto var(--space-6) auto;
+  padding: 0 var(--space-2);
+}
+
+.of-step-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  position: relative;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+}
+
+.of-step-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.of-step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-border-strong);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.of-step-item.active .of-step-number {
+  border-color: var(--color-brand-accent);
+  background-color: var(--color-brand-accent);
+  color: #FFFFFF;
+}
+
+.of-step-item.completed .of-step-number {
+  border-color: var(--color-brand-accent);
+  background-color: var(--color-brand-accent-light);
+  color: var(--color-brand-accent);
+}
+
+.of-step-label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-tertiary);
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .of-step-label {
+    display: inline;
+  }
+}
+
+.of-step-item.active .of-step-label {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.of-step-item.completed .of-step-label {
+  color: var(--color-text-secondary);
+}
+
+.of-step-line {
+  flex: 1;
+  height: 2px;
+  background-color: var(--color-border-default);
+  margin: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  transition: background-color var(--transition-fast);
+}
+
+.of-step-line.completed {
+  background-color: var(--color-brand-accent);
+}

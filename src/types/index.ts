@@ -1,8 +1,21 @@
 /* OrderFlow TypeScript Domain Model Definitions */
 
-export type DeliveryStatus = 'created' | 'matched' | 'in_transit' | 'delivered';
+export type DeliveryStatus =
+  | 'draft'
+  | 'searching'
+  | 'created'
+  | 'provider_selected'
+  | 'awaiting_pickup'
+  | 'picked_up'
+  | 'in_transit'
+  | 'delivered'
+  | 'cancelled';
 
 export type UserRole = 'vendor' | 'logistics_provider';
+
+export type PackageType = 'parcel' | 'box' | 'bag' | 'fragile_item' | 'other';
+
+export type ProviderAvailability = 'available' | 'busy' | 'unavailable';
 
 // ---------------------------------------------------------------------------
 // User & Account Models
@@ -45,7 +58,7 @@ export interface LogisticsProviderProfile {
   coverageArea: string;
   vehicleTypes: string[];
   packageCategories: string[];
-  availability: 'available' | 'unavailable';
+  availability: ProviderAvailability;
   createdAt: string;
 }
 
@@ -54,48 +67,74 @@ export interface LogisticsProviderProfile {
 // ---------------------------------------------------------------------------
 
 export interface PackageDetails {
+  productName: string;
+  itemCategory: string;
+  packageType: PackageType;
+  quantity: number;
   weightKg: number;
   dimensionsCm: {
     length: number;
     width: number;
     height: number;
   };
-  itemCategory: string;
   fragile: boolean;
+  imageUrl?: string;
   notes?: string;
 }
 
 export interface LocationPoint {
   address: string;
   city: string;
-  postalCode?: string;
-  contactName: string;
-  contactPhone: string;
+  area?: string;
+  contactName?: string;
+  contactPhone?: string;
 }
 
-export interface LogisticsProviderOption {
+export interface LogisticsProvider {
   id: string;
-  companyName: string;
+  name: string;
   logoUrl?: string;
-  rating: number;
-  completedJobs: number;
-  estimatedTransitTime: string;
-  priceAmount: number;
+  availability: ProviderAvailability;
+  serviceAreas: string[];
+  estimatedPrice: number;
   currency: string;
-  features: string[];
-  recommended?: boolean;
+  estimatedDeliveryTime: string;
+  vehicleTypes: string[];
+  supportedPackageTypes: PackageType[];
+  rating: number;
+  reviewCount: number;
+  capacity: string;
+  recommendationTag?: string; // e.g. "Best match for package", "Fastest option", "Lowest estimated price"
+  recommendationReason?: string;
 }
 
-export interface DeliveryRequest {
-  id: string;
-  trackingNumber: string;
-  status: DeliveryStatus;
-  createdAt: string;
+/**
+ * DeliveryRecord represents a complete delivery request throughout its lifecycle.
+ */
+export interface DeliveryRecord {
+  id: string;                         // e.g. OF-849201
+  vendorId: string;
+  vendorName: string;
+  providerId?: string;
+  selectedProvider?: LogisticsProvider;
+  productName: string;
   package: PackageDetails;
   pickup: LocationPoint;
   destination: LocationPoint;
-  selectedProvider?: LogisticsProviderOption;
+  recipient: {
+    name: string;
+    phone: string;
+  };
+  deliveryNote?: string;
+  status: DeliveryStatus;
+  estimatedPrice: number;
+  estimatedDeliveryTime: string;
+  createdAt: string;
+  updatedAt: string;
 }
+
+// Backward compatibility interface
+export interface DeliveryRequest extends DeliveryRecord {}
 
 // ---------------------------------------------------------------------------
 // UI State Models
