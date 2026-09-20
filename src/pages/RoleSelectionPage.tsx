@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Building2, Truck, ArrowRight, AlertCircle } from 'lucide-react';
+import { Store, Truck, ArrowRight, AlertCircle, Check } from 'lucide-react';
 import { AuthLayout } from '../components/auth/AuthLayout';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../auth/AuthContext';
 import type { UserRole } from '../types';
+import './RoleSelectionPage.css';
 
 export const RoleSelectionPage: React.FC = () => {
   const navigate = useNavigate();
@@ -34,82 +35,95 @@ export const RoleSelectionPage: React.FC = () => {
     navigate(selected === 'vendor' ? '/onboarding/vendor' : '/onboarding/provider', { replace: true });
   };
 
-  const roles: { value: UserRole; icon: React.ReactNode; title: string; description: string; detail: string }[] = [
+  const roles: { value: UserRole; icon: React.ReactNode; title: string; description: string }[] = [
     {
       value: 'vendor',
-      icon: <Building2 size={28} />,
+      icon: <Store size={20} />,
       title: 'Vendor',
-      description: 'I need to deliver products to customers.',
-      detail: 'Create delivery requests, compare logistics options, book providers, and track your orders.',
+      description: 'Deliver products to your customers.',
     },
     {
       value: 'logistics_provider',
-      icon: <Truck size={28} />,
+      icon: <Truck size={20} />,
       title: 'Logistics Provider',
-      description: 'I provide delivery and transport services.',
-      detail: 'Receive and fulfill delivery requests from vendors. Manage your fleet and service operations.',
+      description: 'Manage deliveries and serve vendors.',
     },
   ];
 
   return (
-    <AuthLayout>
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        {user?.fullName && (
-          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
-            Welcome, <strong style={{ color: 'var(--color-text-primary)' }}>{user.fullName}</strong>
-          </p>
-        )}
-        <h1 className="of-auth-heading">How will you use OrderFlow?</h1>
-        <p className="of-auth-subheading">
-          This determines your experience. You can only set this once.
-        </p>
-      </div>
-
-      {error && (
-        <div className="of-auth-error-banner" role="alert" style={{ marginBottom: 'var(--space-5)' }}>
-          <AlertCircle size={16} style={{ flexShrink: 0 }} />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <div className="of-role-cards">
-        {roles.map((role) => (
-          <button
-            key={role.value}
-            type="button"
-            className={`of-role-card ${selected === role.value ? 'is-selected' : ''}`}
-            onClick={() => setSelected(role.value)}
-            aria-pressed={selected === role.value}
-          >
-            <div className="of-role-card-header">
-              <div className="of-role-icon-box">{role.icon}</div>
-              <div className={`of-role-check ${selected === role.value ? 'is-checked' : ''}`}>
-                {selected === role.value && (
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M2.5 7L5.5 10L11.5 4" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-              </div>
+    <AuthLayout maxWidth="560px">
+      <div className="of-role-selection-wrapper">
+        <div className="of-role-header">
+          {user?.fullName && (
+            <div className="of-role-welcome-badge">
+              Welcome, {user.fullName}
             </div>
-            <h3 className="of-role-title">{role.title}</h3>
-            <p className="of-role-desc">{role.description}</p>
-            <p className="of-role-detail">{role.detail}</p>
-          </button>
-        ))}
-      </div>
+          )}
+          <h1 className="of-role-title">How will you use OrderFlow?</h1>
+          <p className="of-role-subtitle">
+            Choose the workspace that fits you.
+          </p>
+        </div>
 
-      <div style={{ marginTop: 'var(--space-6)' }}>
-        <Button
-          variant="primary"
-          size="lg"
-          disabled={!selected}
-          isLoading={isSubmitting}
-          onClick={handleContinue}
-          rightIcon={<ArrowRight size={18} />}
-          className="of-auth-submit-btn"
-        >
-          Continue as {selected === 'vendor' ? 'Vendor' : selected === 'logistics_provider' ? 'Logistics Provider' : '...'}
-        </Button>
+        {error && (
+          <div className="of-auth-error-banner" role="alert">
+            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="of-role-grid" role="radiogroup" aria-label="OrderFlow Role Selection">
+          {roles.map((role) => {
+            const isSelected = selected === role.value;
+            return (
+              <button
+                key={role.value}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={0}
+                className={`of-role-card ${isSelected ? 'is-selected' : ''}`}
+                onClick={() => setSelected(role.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelected(role.value);
+                  }
+                }}
+              >
+                <div className="of-role-card-top">
+                  <div className="of-role-icon-box">{role.icon}</div>
+                  <div className="of-role-check-ring">
+                    {isSelected && <Check size={12} strokeWidth={3} />}
+                  </div>
+                </div>
+
+                <div className="of-role-card-body">
+                  <h2 className="of-role-card-title">{role.title}</h2>
+                  <p className="of-role-card-desc">{role.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="of-role-footer">
+          <Button
+            variant="primary"
+            size="lg"
+            disabled={!selected}
+            isLoading={isSubmitting}
+            onClick={handleContinue}
+            rightIcon={selected ? <ArrowRight size={18} /> : undefined}
+            className="of-role-cta-btn"
+          >
+            {selected ? 'Continue' : 'Select a role'}
+          </Button>
+
+          <p className="of-role-note">
+            You can update your workspace preferences anytime in settings.
+          </p>
+        </div>
       </div>
     </AuthLayout>
   );

@@ -7,6 +7,10 @@ interface AuthLayoutProps {
   children: React.ReactNode;
   /** Optional back-link configuration */
   backLink?: { to: string; label: string };
+  /** Optional card container max-width override */
+  maxWidth?: string;
+  /** Optional additional class name for the auth card */
+  className?: string;
 }
 
 /**
@@ -14,7 +18,7 @@ interface AuthLayoutProps {
  * Minimal chrome: logo + content + legal footer.
  * Intentionally simple — the form content is what matters.
  */
-export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, backLink }) => {
+export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, backLink, maxWidth, className = '' }) => {
   return (
     <div className="of-auth-layout">
       {/* Header */}
@@ -37,7 +41,10 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ children, backLink }) =>
 
       {/* Main Content */}
       <main className="of-auth-main">
-        <div className="of-auth-card">
+        <div
+          className={`of-auth-card ${className}`.trim()}
+          style={maxWidth ? { maxWidth } : undefined}
+        >
           {children}
         </div>
       </main>

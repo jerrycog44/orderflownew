@@ -47,23 +47,38 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     );
   }
 
-  // Not authenticated → go to login, preserve intended destination
+  // 1. Not authenticated → go to login, preserve intended destination
   if (!isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Authenticated but no role yet → must choose role
-  if (!role && !onboardingOnly) {
-    return <Navigate to="/role-selection" replace />;
+  // 2. Authenticated but no role yet → must choose role
+  if (!role) {
+    if (location.pathname !== '/role-selection') {
+      return <Navigate to="/role-selection" replace />;
+    }
+    return <>{children}</>;
   }
 
-  // Role set but onboarding not complete → send to their onboarding flow
-  if (role && !hasCompletedOnboarding && !onboardingOnly) {
+  // 3. Role set but onboarding not complete → send to their onboarding flow
+  if (!hasCompletedOnboarding) {
     const dest = role === 'vendor' ? '/onboarding/vendor' : '/onboarding/provider';
-    return <Navigate to={dest} replace />;
+    if (location.pathname !== dest) {
+      return <Navigate to={dest} replace />;
+    }
+    if (requiredRole && role !== requiredRole) {
+      return <Navigate to={dest} replace />;
+    }
+    return <>{children}</>;
   }
 
-  // Wrong role access → redirect to their own dashboard
+  // 4. Role set & onboarding completed, but trying to access onboarding or role-selection pages
+  if (onboardingOnly || location.pathname === '/role-selection' || location.pathname.startsWith('/onboarding')) {
+    const ownDashboard = role === 'vendor' ? '/vendor/dashboard' : '/logistics/dashboard';
+    return <Navigate to={ownDashboard} replace />;
+  }
+
+  // 5. Wrong role access → redirect to their own dashboard
   if (requiredRole && role !== requiredRole) {
     const ownDashboard = role === 'vendor' ? '/vendor/dashboard' : '/logistics/dashboard';
     return <Navigate to={ownDashboard} replace />;
