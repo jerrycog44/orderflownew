@@ -111,4 +111,28 @@ export const logisticsService = {
   getProviderById(id: string): LogisticsProvider | undefined {
     return MOCK_LOGISTICS_PROVIDERS.find((p) => p.id === id);
   },
+
+  /**
+   * Evaluates delivery specifications and produces an ordered list of eligible provider candidates
+   * for automated targeted dispatching. Excludes offline/unavailable providers, unsupported areas,
+   * and already-declined providers.
+   */
+  buildCandidateQueue(
+    input: DeliveryRequestFormInput,
+    excludedProviderIds: string[] = []
+  ): LogisticsProvider[] {
+    const recommended = this.recommendLogisticsProviders(input);
+    const excludedSet = new Set(excludedProviderIds);
+
+    // Filter strictly for eligible candidates:
+    // 1. Must NOT be in excluded/declined IDs
+    // 2. Must NOT be 'unavailable' (offline)
+    // 3. Must cover the city area
+    return recommended.filter((p) => {
+      if (excludedSet.has(p.id)) return false;
+      if (p.availability === 'unavailable') return false;
+      if (p.recommendationTag === 'Outside service area') return false;
+      return true;
+    });
+  },
 };

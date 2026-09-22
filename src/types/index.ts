@@ -3,6 +3,7 @@
 export type DeliveryStatus =
   | 'draft'
   | 'searching'
+  | 'opportunity_sent'
   | 'created'
   | 'provider_selected'
   | 'awaiting_pickup'
@@ -127,6 +128,15 @@ export interface DeliveryRecord {
   };
   deliveryNote?: string;
   status: DeliveryStatus;
+  dispatchMode?: 'auto' | 'manual';
+  currentOpportunityProviderId?: string;
+  candidateQueue?: string[];
+  declinedProviderIds?: string[];
+  assignedDriver?: {
+    name: string;
+    phone: string;
+    vehiclePlate?: string;
+  };
   estimatedPrice: number;
   estimatedDeliveryTime: string;
   createdAt: string;

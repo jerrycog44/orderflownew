@@ -8,9 +8,9 @@ import { Badge } from '../components/ui/Badge';
 import './VendorDeliveryDetailPage.css';
 
 const TIMELINE_STEPS = [
-  { key: 'created', label: 'Created' },
+  { key: 'created', label: 'Order Created' },
+  { key: 'opportunity_sent', label: 'Opportunity Sent' },
   { key: 'provider_selected', label: 'Provider Matched' },
-  { key: 'awaiting_pickup', label: 'Awaiting Pickup' },
   { key: 'in_transit', label: 'In Transit' },
   { key: 'delivered', label: 'Delivered' },
 ];

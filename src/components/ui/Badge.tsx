@@ -29,6 +29,7 @@ export const DeliveryStatusBadge: React.FC<{ status: DeliveryStatus; className?:
   const configMap: Record<DeliveryStatus, { label: string; variant: BadgeProps['variant'] }> = {
     draft: { label: 'Draft', variant: 'neutral' },
     searching: { label: 'Finding Logistics', variant: 'info' },
+    opportunity_sent: { label: 'Dispatch Sent', variant: 'brand' },
     created: { label: 'Request Created', variant: 'warning' },
     provider_selected: { label: 'Provider Selected', variant: 'info' },
     awaiting_pickup: { label: 'Awaiting Pickup', variant: 'warning' },

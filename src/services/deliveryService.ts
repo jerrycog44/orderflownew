@@ -1,5 +1,6 @@
 import type { DeliveryRecord } from '../types';
 import { INITIAL_SEED_DELIVERIES } from '../data/mockDeliveries';
+import { logisticsService } from './logisticsService';
 
 const STORAGE_KEY = 'of_dev_deliveries';
 
@@ -47,9 +48,33 @@ export const deliveryService = {
     const id = `OF-${randomNum}`;
     const now = new Date().toISOString();
 
+    let candidateQueue: string[] = [];
+    let currentOpportunityProviderId: string | undefined = undefined;
+    let initialStatus = data.status || 'created';
+
+    // If auto-dispatch mode, build ranked candidate queue
+    if (data.dispatchMode === 'auto' || !data.providerId) {
+      const candidates = logisticsService.buildCandidateQueue({
+        package: data.package,
+        pickup: data.pickup,
+        destination: data.destination,
+      });
+
+      candidateQueue = candidates.map((c) => c.id);
+      if (candidateQueue.length > 0) {
+        currentOpportunityProviderId = candidateQueue[0];
+        initialStatus = 'opportunity_sent';
+      } else {
+        initialStatus = 'searching';
+      }
+    }
+
     const newDelivery: DeliveryRecord = {
       ...data,
       id,
+      status: initialStatus,
+      candidateQueue: data.candidateQueue || candidateQueue,
+      currentOpportunityProviderId: data.currentOpportunityProviderId || currentOpportunityProviderId,
       createdAt: now,
       updatedAt: now,
     };
@@ -150,6 +175,65 @@ export const deliveryService = {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
     } catch {
       // localStorage error
+    }
+
+    return updatedRecord;
+  },
+
+  /**
+   * Retrieves a targeted delivery opportunity specifically assigned to a provider.
+   */
+  getProviderTargetedOpportunity(providerId: string): DeliveryRecord | null {
+    const all = this.getAllDeliveries();
+    return (
+      all.find(
+        (d) =>
+          d.status === 'opportunity_sent' &&
+          (d.currentOpportunityProviderId === providerId || (!d.currentOpportunityProviderId && providerId === 'prov_swifthaul'))
+      ) || null
+    );
+  },
+
+  /**
+   * Declines a targeted delivery opportunity and advances the candidate queue to the next eligible provider.
+   */
+  declineOpportunity(id: string, providerId: string): DeliveryRecord | null {
+    const all = this.getAllDeliveries();
+    const index = all.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+
+    const target = all[index];
+    const declined = [...(target.declinedProviderIds || []), providerId];
+
+    // Find next candidate from queue that hasn't declined
+    const queue = target.candidateQueue || [];
+    const nextCandidateId = queue.find((candId) => !declined.includes(candId));
+
+    let updatedRecord: DeliveryRecord;
+    if (nextCandidateId) {
+      updatedRecord = {
+        ...target,
+        status: 'opportunity_sent',
+        currentOpportunityProviderId: nextCandidateId,
+        declinedProviderIds: declined,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      // Queue exhausted — set to searching/pending dispatch
+      updatedRecord = {
+        ...target,
+        status: 'searching',
+        currentOpportunityProviderId: undefined,
+        declinedProviderIds: declined,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    all[index] = updatedRecord;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      // storage error
     }
 
     return updatedRecord;

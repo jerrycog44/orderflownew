@@ -12,7 +12,8 @@ export interface ConfirmationStepProps {
   destination: LocationPoint;
   recipient: { name: string; phone: string };
   deliveryNote?: string;
-  selectedProvider: LogisticsProvider;
+  selectedProvider?: LogisticsProvider | null;
+  dispatchMode?: 'auto' | 'manual';
   onBack: () => void;
 }
 
@@ -23,6 +24,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   recipient,
   deliveryNote,
   selectedProvider,
+  dispatchMode = 'auto',
   onBack,
 }) => {
   const { user } = useAuth();
@@ -35,20 +37,22 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
     setIsSubmitting(true);
 
     try {
+      const isAuto = dispatchMode === 'auto' || !selectedProvider;
       const newDelivery = deliveryService.createDelivery({
         vendorId: user?.id || 'mock_vendor_1',
         vendorName: user?.fullName || 'Vendor',
-        providerId: selectedProvider.id,
-        selectedProvider,
+        providerId: isAuto ? undefined : selectedProvider?.id,
+        selectedProvider: isAuto ? undefined : selectedProvider || undefined,
+        dispatchMode: isAuto ? 'auto' : 'manual',
         productName: packageData.productName,
         package: packageData,
         pickup,
         destination,
         recipient,
         deliveryNote,
-        status: 'awaiting_pickup',
-        estimatedPrice: selectedProvider.estimatedPrice,
-        estimatedDeliveryTime: selectedProvider.estimatedDeliveryTime,
+        status: isAuto ? 'opportunity_sent' : 'awaiting_pickup',
+        estimatedPrice: selectedProvider ? selectedProvider.estimatedPrice : 3500,
+        estimatedDeliveryTime: selectedProvider ? selectedProvider.estimatedDeliveryTime : 'Same Day Dispatch',
       });
 
       setCreatedDelivery(newDelivery);
@@ -93,7 +97,11 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
           Delivery Request Created
         </h2>
         <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-6)' }}>
-          Your delivery request has been created with <strong>{selectedProvider.name}</strong>.
+          {createdDelivery.selectedProvider ? (
+            <>Your delivery request has been created with <strong>{createdDelivery.selectedProvider.name}</strong>.</>
+          ) : (
+            <>OrderFlow Smart Dispatch is evaluating and routing your shipment to the best available logistics provider.</>
+          )}
         </p>
 
         {/* Summary Details Card */}
@@ -134,7 +142,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               Logistics Partner
             </span>
             <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
-              {selectedProvider.name}
+              {createdDelivery.selectedProvider?.name || 'OrderFlow Smart Dispatch'}
             </span>
           </div>
 
@@ -216,26 +224,26 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
             <img
-              src={selectedProvider.logoUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100'}
-              alt={selectedProvider.name}
+              src={selectedProvider?.logoUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100'}
+              alt={selectedProvider?.name || 'OrderFlow Smart Dispatch'}
               style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-md)', objectFit: 'cover' }}
             />
             <div>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 600, textTransform: 'uppercase' }}>
-                Chosen Logistics Partner
+                {selectedProvider ? 'Chosen Logistics Partner' : 'Smart Dispatch Route'}
               </span>
               <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                {selectedProvider.name}
+                {selectedProvider?.name || 'OrderFlow Auto-Dispatch'}
               </h3>
             </div>
           </div>
 
           <div style={{ textAlign: 'right' }}>
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-              Price
+              Est. Price
             </span>
             <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-brand-accent)', margin: 0 }}>
-              ₦{selectedProvider.estimatedPrice.toLocaleString()}
+              ₦{(selectedProvider ? selectedProvider.estimatedPrice : 3500).toLocaleString()}
             </p>
           </div>
         </div>

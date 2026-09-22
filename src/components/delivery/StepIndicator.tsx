@@ -9,10 +9,9 @@ export interface StepIndicatorProps {
 
 const STEPS = [
   { step: 1, label: 'Package' },
-  { step: 2, label: 'Pickup & Delivery' },
+  { step: 2, label: 'Pickup & Dropoff' },
   { step: 3, label: 'Review' },
-  { step: 4, label: 'Logistics' },
-  { step: 5, label: 'Confirm' },
+  { step: 4, label: 'OrderFlow Dispatch' },
 ];
 
 export const StepIndicator: React.FC<StepIndicatorProps> = ({ currentStep, onStepClick }) => {

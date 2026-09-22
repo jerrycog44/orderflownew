@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, MapPin, Navigation, CheckCircle2, Clock, PackageCheck, Phone, User as UserIcon } from 'lucide-react';
+import { Truck, LogOut, MapPin, Navigation, CheckCircle2, Clock, PackageCheck, Phone, User as UserIcon, XCircle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
-import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus } from '../types';
+import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus, ProviderAvailability } from '../types';
 
 export const ProviderDashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -16,6 +16,14 @@ export const ProviderDashboardPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'opportunities' | 'assigned'>('opportunities');
   const [selectedJob, setSelectedJob] = useState<DeliveryRecord | null>(null);
+
+  const providerId = user?.id || 'prov_swifthaul';
+
+  // Availability state
+  const [availability, setAvailability] = useState<ProviderAvailability>(() => {
+    const saved = localStorage.getItem(`of_dev_availability_${providerId}`);
+    return (saved as ProviderAvailability) || 'available';
+  });
 
   // Lazy initialize profile
   const [profile] = useState<LogisticsProviderProfile | null>(() => {
@@ -33,8 +41,11 @@ export const ProviderDashboardPage: React.FC = () => {
     return null;
   });
 
-  const providerId = user?.id || 'mock_provider_1';
   const providerName = profile?.providerName || user?.fullName || 'SwiftHaul Express';
+
+  const [targetedOpportunity, setTargetedOpportunity] = useState<DeliveryRecord | null>(() => {
+    return deliveryService.getProviderTargetedOpportunity(providerId);
+  });
 
   const [opportunities, setOpportunities] = useState<DeliveryRecord[]>(() => {
     return deliveryService.getProviderOpportunities(profile?.coverageArea);
@@ -45,22 +56,52 @@ export const ProviderDashboardPage: React.FC = () => {
   });
 
   const refreshData = () => {
+    setTargetedOpportunity(deliveryService.getProviderTargetedOpportunity(providerId));
     setOpportunities(deliveryService.getProviderOpportunities(profile?.coverageArea));
     setAssignedDeliveries(deliveryService.getProviderAssignedDeliveries(providerId));
+  };
+
+  const handleAvailabilityChange = (newStatus: ProviderAvailability) => {
+    setAvailability(newStatus);
+    localStorage.setItem(`of_dev_availability_${providerId}`, newStatus);
+
+    const statusLabels: Record<ProviderAvailability, string> = {
+      available: 'Online & Available for Dispatches',
+      busy: 'Busy (High Active Dispatch Load)',
+      unavailable: 'Offline / Unavailable',
+    };
+
+    addToast({
+      title: 'Availability Status Updated',
+      description: `Your status is now ${statusLabels[newStatus]}.`,
+      type: newStatus === 'available' ? 'success' : newStatus === 'busy' ? 'warning' : 'info',
+    });
+    refreshData();
   };
 
   const handleAcceptJob = (job: DeliveryRecord) => {
     const updated = deliveryService.acceptDelivery(job.id, providerId, providerName);
     if (updated) {
       addToast({
-        title: 'Job Accepted!',
-        description: `Delivery request ${job.id} has been added to your active dispatch queue.`,
+        title: 'Dispatch Accepted!',
+        description: `Delivery ${job.id} is now assigned to your fleet queue.`,
         type: 'success',
       });
       setSelectedJob(null);
       refreshData();
       setActiveTab('assigned');
     }
+  };
+
+  const handleDeclineJob = (jobId: string) => {
+    deliveryService.declineOpportunity(jobId, providerId);
+    addToast({
+      title: 'Opportunity Declined',
+      description: `OrderFlow has routed delivery ${jobId} to the next eligible provider candidate.`,
+      type: 'info',
+    });
+    setSelectedJob(null);
+    refreshData();
   };
 
   const handleUpdateStatus = (jobId: string, newStatus: DeliveryStatus) => {
@@ -95,7 +136,7 @@ export const ProviderDashboardPage: React.FC = () => {
           alignItems: 'center',
           flexWrap: 'wrap',
           gap: 'var(--space-4)',
-          marginBottom: 'var(--space-8)',
+          marginBottom: 'var(--space-6)',
           paddingBottom: 'var(--space-6)',
           borderBottom: '1px solid var(--color-border-default)',
         }}
@@ -108,15 +149,194 @@ export const ProviderDashboardPage: React.FC = () => {
             <Badge variant="brand">Logistics Provider</Badge>
           </div>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-            Welcome back, <strong>{providerName}</strong>. Manage your fleet dispatches and available opportunities.
+            Welcome back, <strong>{providerName}</strong>. Manage your dispatches and real-time fleet availability.
           </p>
         </div>
 
-        <Button variant="outline" size="sm" onClick={handleSignOut}>
-          <LogOut size={16} style={{ marginRight: '6px' }} />
-          Sign out
-        </Button>
+        {/* Interactive Provider Availability Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'var(--color-bg-subtle)',
+              border: '1px solid var(--color-border-default)',
+              borderRadius: 'var(--radius-full)',
+              padding: '3px',
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => handleAvailabilityChange('available')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--font-size-xs)',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                background: availability === 'available' ? '#10B981' : 'transparent',
+                color: availability === 'available' ? '#ffffff' : 'var(--color-text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'available' ? '#ffffff' : '#10B981' }} />
+              Online
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAvailabilityChange('busy')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--font-size-xs)',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                background: availability === 'busy' ? '#F59E0B' : 'transparent',
+                color: availability === 'busy' ? '#ffffff' : 'var(--color-text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'busy' ? '#ffffff' : '#F59E0B' }} />
+              Busy
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleAvailabilityChange('unavailable')}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--font-size-xs)',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                background: availability === 'unavailable' ? '#6B7280' : 'transparent',
+                color: availability === 'unavailable' ? '#ffffff' : 'var(--color-text-secondary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'unavailable' ? '#ffffff' : '#9CA3AF' }} />
+              Offline
+            </button>
+          </div>
+
+          <Button variant="outline" size="sm" onClick={handleSignOut}>
+            <LogOut size={16} style={{ marginRight: '6px' }} />
+            Sign out
+          </Button>
+        </div>
       </div>
+
+      {/* Targeted Incoming Opportunity Alert Card */}
+      {targetedOpportunity && availability !== 'unavailable' && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(16, 185, 129, 0.06))',
+            border: '2px solid var(--color-brand-primary)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-5)',
+            marginBottom: 'var(--space-6)',
+            boxShadow: '0 4px 16px rgba(37, 99, 235, 0.08)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <Badge variant="brand">NEW TARGETED DISPATCH OPPORTUNITY</Badge>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
+                {targetedOpportunity.id}
+              </span>
+            </div>
+
+            <span style={{ fontSize: 'var(--font-size-xs)', color: '#F59E0B', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Clock size={14} /> Response Time: 3:00 Remaining
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
+            <div>
+              <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px 0' }}>
+                {targetedOpportunity.productName}
+              </h3>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                Vendor: <strong>{targetedOpportunity.vendorName}</strong> • {targetedOpportunity.package.weightKg} kg ({targetedOpportunity.package.packageType})
+              </p>
+            </div>
+
+            <div>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 700 }}>PICKUP:</span>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {targetedOpportunity.pickup.address} ({targetedOpportunity.pickup.city})
+              </p>
+            </div>
+
+            <div>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 700 }}>DROP-OFF:</span>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {targetedOpportunity.destination.address} ({targetedOpportunity.destination.city})
+              </p>
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Payout
+              </span>
+              <p style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#10B981', margin: 0 }}>
+                ₦{targetedOpportunity.estimatedPrice.toLocaleString()}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid rgba(0, 0, 0, 0.08)' }}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleDeclineJob(targetedOpportunity.id)}
+              leftIcon={<XCircle size={16} color="var(--color-warning)" />}
+            >
+              Decline Opportunity
+            </Button>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => handleAcceptJob(targetedOpportunity)}
+              leftIcon={<CheckCircle2 size={16} />}
+            >
+              Accept Dispatch
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Offline Alert if Unavailable */}
+      {availability === 'unavailable' && (
+        <div
+          style={{
+            padding: 'var(--space-4) var(--space-5)',
+            background: 'var(--color-bg-subtle)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--space-6)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+          }}
+        >
+          <AlertCircle size={20} color="var(--color-text-tertiary)" />
+          <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+            You are currently <strong>Offline</strong>. Switch status to <strong>Online</strong> to receive OrderFlow dispatch opportunities.
+          </p>
+        </div>
+      )}
 
       {/* Grid Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(280px, 1fr)', gap: 'var(--space-6)' }}>
