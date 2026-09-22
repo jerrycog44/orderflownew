@@ -9,7 +9,7 @@ import './VendorDeliveryDetailPage.css';
 
 const TIMELINE_STEPS = [
   { key: 'created', label: 'Order Created' },
-  { key: 'opportunity_sent', label: 'Opportunity Sent' },
+  { key: 'dispatching', label: 'Dispatching' },
   { key: 'provider_selected', label: 'Provider Matched' },
   { key: 'in_transit', label: 'In Transit' },
   { key: 'delivered', label: 'Delivered' },
@@ -59,8 +59,10 @@ export const VendorDeliveryDetailPage: React.FC = () => {
       case 'draft':
       case 'created':
         return 0;
-      case 'provider_selected':
+      case 'searching':
+      case 'opportunity_sent':
         return 1;
+      case 'provider_selected':
       case 'awaiting_pickup':
         return 2;
       case 'in_transit':
@@ -68,7 +70,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
       case 'delivered':
         return 4;
       default:
-        return 2;
+        return 1;
     }
   };
 
@@ -78,8 +80,21 @@ export const VendorDeliveryDetailPage: React.FC = () => {
     <div className="of-delivery-detail-container">
       <button
         type="button"
-        className="of-create-delivery-back-link"
         onClick={() => navigate('/vendor/dashboard')}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--space-2)',
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--color-text-secondary)',
+          fontSize: 'var(--font-size-sm)',
+          fontWeight: 600,
+          marginBottom: 'var(--space-4)',
+          padding: '0',
+          transition: 'color var(--transition-fast)',
+        }}
       >
         <ArrowLeft size={16} />
         Back to Dashboard
@@ -88,12 +103,24 @@ export const VendorDeliveryDetailPage: React.FC = () => {
       {/* Header Info */}
       <div className="of-delivery-detail-header">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)', flexWrap: 'wrap' }}>
             <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, fontFamily: 'monospace', color: 'var(--color-text-primary)', margin: 0 }}>
               {delivery.id}
             </h1>
-            <Badge variant={delivery.status === 'delivered' ? 'success' : delivery.status === 'in_transit' ? 'brand' : 'neutral'}>
-              {delivery.status.replace('_', ' ').toUpperCase()}
+            <Badge
+              variant={
+                delivery.status === 'delivered'
+                  ? 'success'
+                  : delivery.status === 'in_transit'
+                  ? 'brand'
+                  : delivery.status === 'provider_selected' || delivery.status === 'awaiting_pickup'
+                  ? 'info'
+                  : 'warning'
+              }
+            >
+              {delivery.status === 'opportunity_sent' || delivery.status === 'searching'
+                ? 'Dispatching'
+                : delivery.status.replace(/_/g, ' ').toUpperCase()}
             </Badge>
           </div>
           <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>

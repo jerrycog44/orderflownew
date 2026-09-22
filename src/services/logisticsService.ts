@@ -109,12 +109,30 @@ export const logisticsService = {
    * Get single provider by ID
    */
   getProviderById(id: string): LogisticsProvider | undefined {
-    return MOCK_LOGISTICS_PROVIDERS.find((p) => p.id === id);
+    const base = MOCK_LOGISTICS_PROVIDERS.find((p) => p.id === id);
+    if (!base) return undefined;
+    const dynamicAvail = this.getDynamicAvailability(id);
+    return dynamicAvail ? { ...base, availability: dynamicAvail } : base;
+  },
+
+  /**
+   * Checks localStorage for dynamically updated provider availability status.
+   */
+  getDynamicAvailability(providerId: string): LogisticsProvider['availability'] | null {
+    try {
+      const saved = localStorage.getItem(`of_dev_availability_${providerId}`);
+      if (saved === 'available' || saved === 'busy' || saved === 'unavailable') {
+        return saved;
+      }
+    } catch {
+      // storage error fallback
+    }
+    return null;
   },
 
   /**
    * Evaluates delivery specifications and produces an ordered list of eligible provider candidates
-   * for automated targeted dispatching. Excludes offline/unavailable providers, unsupported areas,
+   * for automated targeted dispatching. Excludes busy or offline/unavailable providers, unsupported areas,
    * and already-declined providers.
    */
   buildCandidateQueue(
@@ -126,11 +144,12 @@ export const logisticsService = {
 
     // Filter strictly for eligible candidates:
     // 1. Must NOT be in excluded/declined IDs
-    // 2. Must NOT be 'unavailable' (offline)
+    // 2. Must be 'available' (Online) — excluded if 'busy' or 'unavailable' (Offline)
     // 3. Must cover the city area
     return recommended.filter((p) => {
+      const currentAvailability = this.getDynamicAvailability(p.id) || p.availability;
       if (excludedSet.has(p.id)) return false;
-      if (p.availability === 'unavailable') return false;
+      if (currentAvailability === 'unavailable' || currentAvailability === 'busy') return false;
       if (p.recommendationTag === 'Outside service area') return false;
       return true;
     });

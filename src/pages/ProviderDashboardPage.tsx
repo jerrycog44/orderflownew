@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, MapPin, Navigation, CheckCircle2, Clock, PackageCheck, Phone, User as UserIcon, XCircle, AlertCircle } from 'lucide-react';
+import { Truck, LogOut, MapPin, Navigation, CheckCircle2, PackageCheck, Phone, User as UserIcon, XCircle, AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
@@ -180,9 +180,10 @@ export const ProviderDashboardPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                transition: 'background var(--transition-fast), color var(--transition-fast)',
               }}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'available' ? '#ffffff' : '#10B981' }} />
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'available' ? '#ffffff' : '#10B981', transition: 'background var(--transition-fast)' }} />
               Online
             </button>
 
@@ -201,9 +202,10 @@ export const ProviderDashboardPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                transition: 'background var(--transition-fast), color var(--transition-fast)',
               }}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'busy' ? '#ffffff' : '#F59E0B' }} />
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'busy' ? '#ffffff' : '#F59E0B', transition: 'background var(--transition-fast)' }} />
               Busy
             </button>
 
@@ -222,9 +224,10 @@ export const ProviderDashboardPage: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
+                transition: 'background var(--transition-fast), color var(--transition-fast)',
               }}
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'unavailable' ? '#ffffff' : '#9CA3AF' }} />
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'unavailable' ? '#ffffff' : '#9CA3AF', transition: 'background var(--transition-fast)' }} />
               Offline
             </button>
           </div>
@@ -256,8 +259,30 @@ export const ProviderDashboardPage: React.FC = () => {
               </span>
             </div>
 
-            <span style={{ fontSize: 'var(--font-size-xs)', color: '#F59E0B', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Clock size={14} /> Response Time: 3:00 Remaining
+            <span
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: '#10B981',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'rgba(16, 185, 129, 0.1)',
+                padding: '3px 8px',
+                borderRadius: 'var(--radius-full)',
+              }}
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: '#10B981',
+                  display: 'inline-block',
+                  animation: 'pulse 1.5s infinite',
+                }}
+              />
+              New Opportunity
             </span>
           </div>
 
@@ -338,8 +363,8 @@ export const ProviderDashboardPage: React.FC = () => {
         </div>
       )}
 
-      {/* Grid Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(280px, 1fr)', gap: 'var(--space-6)' }}>
+      {/* Grid Layout — responsive: 2-col on wide, 1-col on mobile */}
+      <div className="of-provider-grid">
         {/* Main Section */}
         <div>
           {/* Navigation Tabs */}
@@ -527,7 +552,7 @@ export const ProviderDashboardPage: React.FC = () => {
                             {job.productName}
                           </h3>
                         </div>
-                        <Badge
+                      <Badge
                           variant={
                             job.status === 'delivered'
                               ? 'success'
@@ -536,7 +561,15 @@ export const ProviderDashboardPage: React.FC = () => {
                               : 'warning'
                           }
                         >
-                          {job.status.replace('_', ' ').toUpperCase()}
+                          {job.status === 'delivered'
+                            ? 'Delivered'
+                            : job.status === 'in_transit'
+                            ? 'In Transit'
+                            : job.status === 'provider_selected'
+                            ? 'Matched'
+                            : job.status === 'awaiting_pickup'
+                            ? 'Awaiting Pickup'
+                            : job.status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                         </Badge>
                       </div>
 

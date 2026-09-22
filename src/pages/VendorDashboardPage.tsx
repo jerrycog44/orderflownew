@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -27,16 +27,32 @@ export const VendorDashboardPage: React.FC = () => {
     return null;
   });
 
-  // Lazy initialize vendor deliveries
-  const [deliveries] = useState<DeliveryRecord[]>(() => {
+  // Refresh deliveries on every mount to pick up new records
+  const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+
+  useEffect(() => {
     if (user?.id) {
-      return deliveryService.getVendorDeliveries(user.id);
+      setDeliveries(deliveryService.getVendorDeliveries(user.id));
+    } else {
+      setDeliveries(deliveryService.getVendorDeliveries('mock_vendor_1'));
     }
-    return deliveryService.getVendorDeliveries('mock_vendor_1');
-  });
+  }, [user?.id]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_transit' | 'delivered'>('all');
+
+  const humanizeStatus = (status: string): string => {
+    switch (status) {
+      case 'opportunity_sent': return 'Dispatching';
+      case 'searching': return 'Searching';
+      case 'provider_selected': return 'Provider Matched';
+      case 'awaiting_pickup': return 'Awaiting Pickup';
+      case 'in_transit': return 'In Transit';
+      case 'delivered': return 'Delivered';
+      case 'created': return 'Created';
+      default: return status.replace(/_/g, ' ');
+    }
+  };
 
   const filteredDeliveries = deliveries.filter((d) => {
     // Search matching
@@ -51,7 +67,7 @@ export const VendorDashboardPage: React.FC = () => {
     // Filter matching
     let matchesStatus = true;
     if (statusFilter === 'pending') {
-      matchesStatus = d.status === 'created' || d.status === 'searching' || d.status === 'awaiting_pickup' || d.status === 'provider_selected';
+      matchesStatus = d.status === 'created' || d.status === 'searching' || d.status === 'opportunity_sent' || d.status === 'awaiting_pickup' || d.status === 'provider_selected';
     } else if (statusFilter === 'in_transit') {
       matchesStatus = d.status === 'in_transit';
     } else if (statusFilter === 'delivered') {
@@ -66,7 +82,7 @@ export const VendorDashboardPage: React.FC = () => {
     navigate('/login');
   };
 
-  const pendingCount = deliveries.filter((d) => d.status === 'awaiting_pickup' || d.status === 'searching' || d.status === 'provider_selected').length;
+  const pendingCount = deliveries.filter((d) => d.status === 'awaiting_pickup' || d.status === 'searching' || d.status === 'opportunity_sent' || d.status === 'provider_selected').length;
   const inTransitCount = deliveries.filter((d) => d.status === 'in_transit').length;
   const deliveredCount = deliveries.filter((d) => d.status === 'delivered').length;
 
@@ -229,7 +245,7 @@ export const VendorDashboardPage: React.FC = () => {
                     textTransform: 'capitalize',
                   }}
                 >
-                  {filterKey.replace('_', ' ')}
+                  {filterKey === 'pending' ? 'In Progress' : filterKey.replace('_', ' ')}
                 </button>
               ))}
             </div>
@@ -293,7 +309,16 @@ export const VendorDashboardPage: React.FC = () => {
                         </span>
                       </div>
                       <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                        {delivery.pickup.city} → {delivery.destination.city} • Partner: <strong>{delivery.selectedProvider?.name || 'Searching'}</strong>
+                        {delivery.pickup.city} → {delivery.destination.city} • Partner:{' '}
+                        <strong>
+                          {delivery.selectedProvider?.name
+                            ? delivery.selectedProvider.name
+                            : delivery.status === 'opportunity_sent'
+                            ? 'Dispatching...'
+                            : delivery.status === 'searching'
+                            ? 'Searching...'
+                            : 'Unassigned'}
+                        </strong>
                       </span>
                     </div>
                   </div>
@@ -303,8 +328,20 @@ export const VendorDashboardPage: React.FC = () => {
                       <p style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', margin: 0 }}>
                         ₦{delivery.estimatedPrice.toLocaleString()}
                       </p>
-                      <Badge variant={delivery.status === 'delivered' ? 'success' : delivery.status === 'in_transit' ? 'brand' : 'neutral'}>
-                        {delivery.status.replace('_', ' ')}
+                      <Badge
+                        variant={
+                          delivery.status === 'delivered'
+                            ? 'success'
+                            : delivery.status === 'in_transit'
+                            ? 'brand'
+                            : delivery.status === 'provider_selected' || delivery.status === 'awaiting_pickup'
+                            ? 'info'
+                            : delivery.status === 'opportunity_sent' || delivery.status === 'searching'
+                            ? 'warning'
+                            : 'neutral'
+                        }
+                      >
+                        {humanizeStatus(delivery.status)}
                       </Badge>
                     </div>
 

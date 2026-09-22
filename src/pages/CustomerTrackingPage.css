@@ -61,6 +61,48 @@
   z-index: 1;
 }
 
+/* Progress overlay — coloured portion of the timeline line */
+.tracking-timeline::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: 30px;
+  height: 3px;
+  background: var(--color-brand-primary);
+  z-index: 1;
+  width: var(--timeline-progress, 0%);
+  transition: width 0.4s ease;
+}
+
+@media (max-width: 520px) {
+  .tracking-timeline {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+    margin: var(--space-5) 0 var(--space-4) 0;
+  }
+
+  .tracking-timeline::before,
+  .tracking-timeline::after {
+    display: none;
+  }
+
+  .tracking-step {
+    flex-direction: row;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .tracking-step-dot {
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .tracking-step-label {
+    text-align: left;
+  }
+}
+
 .tracking-step {
   display: flex;
   flex-direction: column;

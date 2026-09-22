@@ -132,8 +132,17 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
               Status
             </span>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: '#10B981', background: 'rgba(16, 185, 129, 0.12)', padding: '2px 8px', borderRadius: 'var(--radius-full)' }}>
-              Awaiting Pickup
+            <span
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                fontWeight: 600,
+                color: createdDelivery.dispatchMode === 'auto' ? '#F59E0B' : '#10B981',
+                background: createdDelivery.dispatchMode === 'auto' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-full)',
+              }}
+            >
+              {createdDelivery.dispatchMode === 'auto' ? 'Dispatching to Provider' : 'Awaiting Pickup'}
             </span>
           </div>
 
@@ -223,11 +232,28 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-            <img
-              src={selectedProvider?.logoUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100'}
-              alt={selectedProvider?.name || 'OrderFlow Smart Dispatch'}
-              style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-md)', objectFit: 'cover' }}
-            />
+            {selectedProvider ? (
+              <img
+                src={selectedProvider.logoUrl || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100'}
+                alt={selectedProvider.name}
+                style={{ width: '40px', height: '40px', borderRadius: 'var(--radius-md)', objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--color-brand-accent)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              </div>
+            )}
             <div>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 600, textTransform: 'uppercase' }}>
                 {selectedProvider ? 'Chosen Logistics Partner' : 'Smart Dispatch Route'}

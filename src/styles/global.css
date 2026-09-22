@@ -172,3 +172,23 @@ button, input, select, textarea {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Pulse animation for live status indicators */
+@keyframes pulse {
+  0% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Responsive provider dashboard grid: 2-col on desktop, 1-col on mobile */
+.of-provider-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2.5fr) minmax(280px, 1fr);
+  gap: var(--space-6);
+}
+
+@media (max-width: 768px) {
+  .of-provider-grid {
+    grid-template-columns: 1fr;
+  }
+}

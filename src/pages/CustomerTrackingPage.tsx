@@ -99,9 +99,21 @@ export const CustomerTrackingPage: React.FC = () => {
             </div>
 
             <div style={{ textAlign: 'right' }}>
-              <Badge variant={delivery.status === 'delivered' ? 'success' : delivery.status === 'in_transit' ? 'brand' : 'warning'}>
-                {delivery.status.replace('_', ' ').toUpperCase()}
-              </Badge>
+            <Badge
+              variant={
+                delivery.status === 'delivered'
+                  ? 'success'
+                  : delivery.status === 'in_transit'
+                  ? 'brand'
+                  : delivery.status === 'provider_selected' || delivery.status === 'awaiting_pickup'
+                  ? 'info'
+                  : 'warning'
+              }
+            >
+              {delivery.status === 'opportunity_sent' || delivery.status === 'searching'
+                ? 'Dispatching'
+                : delivery.status.replace(/_/g, ' ').toUpperCase()}
+            </Badge>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>
                 Est. Delivery: <strong>{delivery.estimatedDeliveryTime || 'Same Day'}</strong>
               </p>
@@ -109,7 +121,20 @@ export const CustomerTrackingPage: React.FC = () => {
           </div>
 
           {/* Visual Step Timeline */}
-          <div className="tracking-timeline">
+          <div
+            className="tracking-timeline"
+            style={{
+              ['--timeline-progress' as string]:
+                currentStep === 0
+                  ? '0%'
+                  : currentStep === 1
+                  ? '33%'
+                  : currentStep === 2
+                  ? '67%'
+                  : '100%',
+            }}
+            aria-label="Delivery progress timeline"
+          >
             {TRACKING_STEPS.map((step, idx) => {
               const isCompleted = idx < currentStep;
               const isCurrent = idx === currentStep;
