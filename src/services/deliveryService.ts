@@ -140,6 +140,7 @@ export const deliveryService = {
 
   /**
    * Accepts a delivery on behalf of a logistics provider.
+   * Prevents double-assignment if already accepted by another provider or completed.
    */
   acceptDelivery(id: string, providerId: string, providerName: string): DeliveryRecord | null {
     const all = this.getAllDeliveries();
@@ -147,6 +148,18 @@ export const deliveryService = {
     if (index === -1) return null;
 
     const target = all[index];
+    // Guard against double assignment or invalid status
+    if (
+      target.status === 'provider_selected' ||
+      target.status === 'awaiting_pickup' ||
+      target.status === 'picked_up' ||
+      target.status === 'in_transit' ||
+      target.status === 'delivered' ||
+      target.status === 'cancelled'
+    ) {
+      return null;
+    }
+
     const updatedRecord: DeliveryRecord = {
       ...target,
       status: 'provider_selected',
@@ -182,8 +195,14 @@ export const deliveryService = {
 
   /**
    * Retrieves a targeted delivery opportunity specifically assigned to a provider.
+   * Respects dynamic provider availability status (suppresses if provider is busy or offline).
    */
   getProviderTargetedOpportunity(providerId: string): DeliveryRecord | null {
+    const dynamicAvail = logisticsService.getDynamicAvailability(providerId);
+    if (dynamicAvail === 'busy' || dynamicAvail === 'unavailable') {
+      return null;
+    }
+
     const all = this.getAllDeliveries();
     return (
       all.find(
