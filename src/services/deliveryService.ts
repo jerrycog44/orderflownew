@@ -69,15 +69,99 @@ export const deliveryService = {
    */
   getProviderOpportunities(coverageArea?: string): DeliveryRecord[] {
     const all = this.getAllDeliveries();
-    if (!coverageArea) return all;
-
-    const areaLower = coverageArea.toLowerCase();
-    return all.filter(
-      (d) =>
-        d.status === 'awaiting_pickup' ||
-        d.status === 'searching' ||
+    return all.filter((d) => {
+      const isAvailableStatus = d.status === 'created' || d.status === 'searching' || d.status === 'awaiting_pickup';
+      if (!isAvailableStatus) return false;
+      if (!coverageArea) return true;
+      const areaLower = coverageArea.toLowerCase();
+      return (
         d.pickup.city.toLowerCase().includes(areaLower) ||
         d.destination.city.toLowerCase().includes(areaLower)
-    );
+      );
+    });
+  },
+
+  /**
+   * Retrieves deliveries assigned to or accepted by a specific provider.
+   */
+  getProviderAssignedDeliveries(providerId: string): DeliveryRecord[] {
+    const all = this.getAllDeliveries();
+    return all.filter((d) => d.providerId === providerId || d.selectedProvider?.id === providerId);
+  },
+
+  /**
+   * Updates the status of a specific delivery record.
+   */
+  updateDeliveryStatus(id: string, status: DeliveryRecord['status']): DeliveryRecord | null {
+    const all = this.getAllDeliveries();
+    const index = all.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+
+    const updatedRecord: DeliveryRecord = {
+      ...all[index],
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+
+    all[index] = updatedRecord;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      // localStorage error
+    }
+
+    return updatedRecord;
+  },
+
+  /**
+   * Accepts a delivery on behalf of a logistics provider.
+   */
+  acceptDelivery(id: string, providerId: string, providerName: string): DeliveryRecord | null {
+    const all = this.getAllDeliveries();
+    const index = all.findIndex((d) => d.id === id);
+    if (index === -1) return null;
+
+    const target = all[index];
+    const updatedRecord: DeliveryRecord = {
+      ...target,
+      status: 'provider_selected',
+      providerId: providerId,
+      selectedProvider: target.selectedProvider
+        ? { ...target.selectedProvider, id: providerId, name: providerName }
+        : {
+            id: providerId,
+            name: providerName,
+            availability: 'available',
+            serviceAreas: [target.pickup.city],
+            estimatedPrice: target.estimatedPrice,
+            currency: 'NGN',
+            estimatedDeliveryTime: target.estimatedDeliveryTime || 'Same Day',
+            vehicleTypes: ['Motorcycle', 'Van'],
+            supportedPackageTypes: [target.package.packageType],
+            rating: 4.9,
+            reviewCount: 120,
+            capacity: 'Standard',
+          },
+      updatedAt: new Date().toISOString(),
+    };
+
+    all[index] = updatedRecord;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      // localStorage error
+    }
+
+    return updatedRecord;
+  },
+
+  /**
+   * Finds a delivery record by ID / tracking code (case insensitive).
+   */
+  getDeliveryByTrackingCode(code: string): DeliveryRecord | null {
+    const all = this.getAllDeliveries();
+    const normalized = code.trim().toLowerCase();
+    return all.find((d) => d.id.toLowerCase() === normalized) || null;
   },
 };
+

@@ -35,6 +35,32 @@ export const VendorDashboardPage: React.FC = () => {
     return deliveryService.getVendorDeliveries('mock_vendor_1');
   });
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_transit' | 'delivered'>('all');
+
+  const filteredDeliveries = deliveries.filter((d) => {
+    // Search matching
+    const query = searchQuery.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      d.id.toLowerCase().includes(query) ||
+      d.productName.toLowerCase().includes(query) ||
+      d.recipient.name.toLowerCase().includes(query) ||
+      d.destination.city.toLowerCase().includes(query);
+
+    // Filter matching
+    let matchesStatus = true;
+    if (statusFilter === 'pending') {
+      matchesStatus = d.status === 'created' || d.status === 'searching' || d.status === 'awaiting_pickup' || d.status === 'provider_selected';
+    } else if (statusFilter === 'in_transit') {
+      matchesStatus = d.status === 'in_transit';
+    } else if (statusFilter === 'delivered') {
+      matchesStatus = d.status === 'delivered';
+    }
+
+    return matchesQuery && matchesStatus;
+  });
+
   const handleSignOut = () => {
     signOut();
     navigate('/login');
@@ -150,13 +176,13 @@ export const VendorDashboardPage: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(280px, 1fr)', gap: 'var(--space-6)' }}>
         {/* Deliveries List */}
         <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
             <div>
               <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                Recent Deliveries
+                Deliveries Management
               </h2>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                Track active requests and partner logistics quotes
+                Track active requests, provider dispatches, and order statuses
               </span>
             </div>
 
@@ -165,22 +191,68 @@ export const VendorDashboardPage: React.FC = () => {
             </Button>
           </div>
 
-          {deliveries.length === 0 ? (
+          {/* Search & Filter Controls */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', alignItems: 'center' }}>
+            <div style={{ flex: '1', minWidth: '220px' }}>
+              <input
+                type="text"
+                placeholder="Search by ID, item name, or recipient..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: 'var(--space-2) var(--space-3)',
+                  fontSize: 'var(--font-size-sm)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-default)',
+                  background: 'var(--color-bg-subtle)',
+                  color: 'var(--color-text-primary)',
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+              {(['all', 'pending', 'in_transit', 'delivered'] as const).map((filterKey) => (
+                <button
+                  key={filterKey}
+                  onClick={() => setStatusFilter(filterKey)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--font-size-xs)',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    border: '1px solid',
+                    background: statusFilter === filterKey ? 'var(--color-brand-primary)' : 'transparent',
+                    color: statusFilter === filterKey ? '#ffffff' : 'var(--color-text-secondary)',
+                    borderColor: statusFilter === filterKey ? 'var(--color-brand-primary)' : 'var(--color-border-default)',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {filterKey.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filteredDeliveries.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
               <Package size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
               <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                No delivery requests yet
+                No matching deliveries found
               </h3>
               <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
-                Create your first delivery request to surface recommendations from available logistics providers.
+                {searchQuery ? 'Try clearing your search terms or filter selection.' : 'Create your first delivery request to get started.'}
               </p>
-              <Button variant="primary" onClick={() => navigate('/vendor/deliveries/create')}>
-                Create First Delivery
-              </Button>
+              {!searchQuery && (
+                <Button variant="primary" onClick={() => navigate('/vendor/deliveries/create')}>
+                  Create First Delivery
+                </Button>
+              )}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-              {deliveries.map((delivery) => (
+              {filteredDeliveries.map((delivery) => (
                 <div
                   key={delivery.id}
                   onClick={() => navigate(`/vendor/deliveries/${delivery.id}`)}

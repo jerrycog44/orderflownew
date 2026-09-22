@@ -85,6 +85,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button onClick={() => scrollToSection('logistics-providers')} className="of-nav-link">
             For Providers
           </button>
+          <Link to="/track" className="of-nav-link">
+            Track Order
+          </Link>
         </nav>
 
         {/* Desktop Actions */}

@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, MapPin, Navigation, ArrowRight } from 'lucide-react';
+import { Truck, LogOut, MapPin, Navigation, CheckCircle2, Clock, PackageCheck, Phone, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import type { LogisticsProviderProfile, DeliveryRecord } from '../types';
+import { Modal } from '../components/ui/Modal';
+import { useToast } from '../components/ui/Toast';
+import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus } from '../types';
 
 export const ProviderDashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<'opportunities' | 'assigned'>('opportunities');
+  const [selectedJob, setSelectedJob] = useState<DeliveryRecord | null>(null);
 
   // Lazy initialize profile
   const [profile] = useState<LogisticsProviderProfile | null>(() => {
@@ -27,10 +33,52 @@ export const ProviderDashboardPage: React.FC = () => {
     return null;
   });
 
-  // Lazy initialize opportunities
-  const [opportunities] = useState<DeliveryRecord[]>(() => {
+  const providerId = user?.id || 'mock_provider_1';
+  const providerName = profile?.providerName || user?.fullName || 'SwiftHaul Express';
+
+  const [opportunities, setOpportunities] = useState<DeliveryRecord[]>(() => {
     return deliveryService.getProviderOpportunities(profile?.coverageArea);
   });
+
+  const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>(() => {
+    return deliveryService.getProviderAssignedDeliveries(providerId);
+  });
+
+  const refreshData = () => {
+    setOpportunities(deliveryService.getProviderOpportunities(profile?.coverageArea));
+    setAssignedDeliveries(deliveryService.getProviderAssignedDeliveries(providerId));
+  };
+
+  const handleAcceptJob = (job: DeliveryRecord) => {
+    const updated = deliveryService.acceptDelivery(job.id, providerId, providerName);
+    if (updated) {
+      addToast({
+        title: 'Job Accepted!',
+        description: `Delivery request ${job.id} has been added to your active dispatch queue.`,
+        type: 'success',
+      });
+      setSelectedJob(null);
+      refreshData();
+      setActiveTab('assigned');
+    }
+  };
+
+  const handleUpdateStatus = (jobId: string, newStatus: DeliveryStatus) => {
+    const updated = deliveryService.updateDeliveryStatus(jobId, newStatus);
+    if (updated) {
+      const statusLabels: Record<string, string> = {
+        in_transit: 'In Transit',
+        delivered: 'Delivered',
+        awaiting_pickup: 'Awaiting Pickup',
+      };
+      addToast({
+        title: 'Status Updated',
+        description: `Delivery ${jobId} status updated to ${statusLabels[newStatus] || newStatus}.`,
+        type: 'info',
+      });
+      refreshData();
+    }
+  };
 
   const handleSignOut = () => {
     signOut();
@@ -60,7 +108,7 @@ export const ProviderDashboardPage: React.FC = () => {
             <Badge variant="brand">Logistics Provider</Badge>
           </div>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-            Welcome back, <strong>{user?.fullName || 'Provider'}</strong>. Manage your fleet services and browse delivery opportunities.
+            Welcome back, <strong>{providerName}</strong>. Manage your fleet dispatches and available opportunities.
           </p>
         </div>
 
@@ -72,99 +120,256 @@ export const ProviderDashboardPage: React.FC = () => {
 
       {/* Grid Layout */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(280px, 1fr)', gap: 'var(--space-6)' }}>
-        {/* Delivery Opportunities Section */}
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
-            <div>
-              <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                Delivery Opportunities
-              </h2>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                Available vendor delivery requests matching your service area
-              </span>
-            </div>
-            <Badge variant="success">{opportunities.length} Available</Badge>
+        {/* Main Section */}
+        <div>
+          {/* Navigation Tabs */}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)', borderBottom: '1px solid var(--color-border-default)' }}>
+            <button
+              onClick={() => setActiveTab('opportunities')}
+              style={{
+                padding: 'var(--space-3) var(--space-4)',
+                fontWeight: 600,
+                fontSize: 'var(--font-size-sm)',
+                color: activeTab === 'opportunities' ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
+                borderBottom: activeTab === 'opportunities' ? '2px solid var(--color-brand-primary)' : '2px solid transparent',
+                background: 'transparent',
+                borderTop: 'none',
+                borderLeft: 'none',
+                borderRight: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+              }}
+            >
+              Available Opportunities ({opportunities.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('assigned')}
+              style={{
+                padding: 'var(--space-3) var(--space-4)',
+                fontWeight: 600,
+                fontSize: 'var(--font-size-sm)',
+                color: activeTab === 'assigned' ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
+                borderBottom: activeTab === 'assigned' ? '2px solid var(--color-brand-primary)' : '2px solid transparent',
+                background: 'transparent',
+                borderTop: 'none',
+                borderLeft: 'none',
+                borderRight: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+              }}
+            >
+              My Active Deliveries ({assignedDeliveries.length})
+            </button>
           </div>
 
-          {opportunities.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-              <Truck size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
-              <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                No active delivery requests right now
-              </h3>
-              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-                New vendor requests in your coverage area will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {opportunities.map((opp) => (
-                <div
-                  key={opp.id}
-                  style={{
-                    background: 'var(--color-bg-subtle)',
-                    border: '1px solid var(--color-border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: 'var(--space-4)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 'var(--space-3)',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                          {opp.id}
-                        </span>
-                        <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
-                          {opp.productName}
-                        </h3>
-                      </div>
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                        Vendor: {opp.vendorName} • {opp.package.weightKg} kg ({opp.package.packageType})
-                      </span>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                        Est. Payout
-                      </span>
-                      <p style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: '#10B981', margin: 0 }}>
-                        ₦{opp.estimatedPrice.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-2)', fontSize: 'var(--font-size-xs)', background: 'var(--color-bg-surface)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <MapPin size={14} color="var(--color-brand-accent)" />
-                      <span><strong>Pickup:</strong> {opp.pickup.address} ({opp.pickup.city})</span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Navigation size={14} color="#10B981" />
-                      <span><strong>Dropoff:</strong> {opp.destination.address} ({opp.destination.city})</span>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => alert(`Delivery Request ${opp.id}: Payout ₦${opp.estimatedPrice.toLocaleString()} for pickup at ${opp.pickup.address}. Job dispatch feature activating in full launch.`)}
-                      rightIcon={<ArrowRight size={14} />}
-                    >
-                      View Request
-                    </Button>
-                  </div>
+          {/* Tab 1: Available Opportunities */}
+          {activeTab === 'opportunities' && (
+            <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+                <div>
+                  <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                    Open Delivery Requests
+                  </h2>
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                    Requests waiting for last-mile pickup in {profile?.coverageArea || 'your service area'}
+                  </span>
                 </div>
-              ))}
+                <Badge variant="success">{opportunities.length} Open</Badge>
+              </div>
+
+              {opportunities.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
+                  <Truck size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
+                  <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    No open delivery requests
+                  </h3>
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                    New vendor orders will populate here automatically.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                  {opportunities.map((opp) => (
+                    <div
+                      key={opp.id}
+                      style={{
+                        background: 'var(--color-bg-subtle)',
+                        border: '1px solid var(--color-border-default)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--space-4)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-3)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
+                            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
+                              {opp.id}
+                            </span>
+                            <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
+                              {opp.productName}
+                            </h3>
+                          </div>
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                            Vendor: {opp.vendorName} • {opp.package.weightKg} kg ({opp.package.packageType})
+                          </span>
+                        </div>
+
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                            Payout
+                          </span>
+                          <p style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: '#10B981', margin: 0 }}>
+                            ₦{opp.estimatedPrice.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-2)', fontSize: 'var(--font-size-xs)', background: 'var(--color-bg-surface)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <MapPin size={14} color="var(--color-brand-accent)" />
+                          <span><strong>Pickup:</strong> {opp.pickup.address} ({opp.pickup.city})</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <Navigation size={14} color="#10B981" />
+                          <span><strong>Dropoff:</strong> {opp.destination.address} ({opp.destination.city})</span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => setSelectedJob(opp)}
+                        >
+                          View & Accept Job
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: My Active Deliveries */}
+          {activeTab === 'assigned' && (
+            <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
+                <div>
+                  <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+                    My Active Dispatches
+                  </h2>
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
+                    Deliveries assigned to your fleet
+                  </span>
+                </div>
+                <Badge variant="info">{assignedDeliveries.length} Active</Badge>
+              </div>
+
+              {assignedDeliveries.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
+                  <Clock size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
+                  <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    No active dispatches
+                  </h3>
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
+                    Accept requests from the Available Opportunities tab to get started.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                  {assignedDeliveries.map((job) => (
+                    <div
+                      key={job.id}
+                      style={{
+                        background: 'var(--color-bg-subtle)',
+                        border: '1px solid var(--color-border-default)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: 'var(--space-4)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 'var(--space-3)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
+                            {job.id}
+                          </span>
+                          <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
+                            {job.productName}
+                          </h3>
+                        </div>
+                        <Badge
+                          variant={
+                            job.status === 'delivered'
+                              ? 'success'
+                              : job.status === 'in_transit'
+                              ? 'brand'
+                              : 'warning'
+                          }
+                        >
+                          {job.status.replace('_', ' ').toUpperCase()}
+                        </Badge>
+                      </div>
+
+                      <div style={{ fontSize: 'var(--font-size-xs)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                        <div>
+                          <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+                            <strong>Pickup:</strong> {job.pickup.address} ({job.pickup.contactPhone || 'N/A'})
+                          </p>
+                        </div>
+                        <div>
+                          <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
+                            <strong>Recipient:</strong> {job.recipient.name} ({job.recipient.phone})
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
+                        {job.status !== 'in_transit' && job.status !== 'delivered' && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleUpdateStatus(job.id, 'in_transit')}
+                            leftIcon={<Truck size={14} />}
+                          >
+                            Mark In Transit
+                          </Button>
+                        )}
+                        {job.status !== 'delivered' && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleUpdateStatus(job.id, 'delivered')}
+                            leftIcon={<CheckCircle2 size={14} />}
+                          >
+                            Mark Delivered
+                          </Button>
+                        )}
+                        {job.status === 'delivered' && (
+                          <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <PackageCheck size={16} /> Order Completed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Provider Profile Details Card */}
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
+        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', height: 'fit-content' }}>
           <h2 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
             <Truck size={18} color="var(--color-brand-accent)" />
             Service Profile
@@ -176,7 +381,7 @@ export const ProviderDashboardPage: React.FC = () => {
                 Company / Service Name
               </span>
               <p style={{ fontWeight: 600, color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {profile?.providerName || 'SwiftHaul Express'}
+                {providerName}
               </p>
             </div>
 
@@ -209,6 +414,72 @@ export const ProviderDashboardPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal: Job Details & Acceptance */}
+      <Modal
+        isOpen={!!selectedJob}
+        onClose={() => setSelectedJob(null)}
+        title={`Delivery Details (${selectedJob?.id})`}
+        maxWidth="lg"
+      >
+        {selectedJob && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <h4 style={{ margin: '0 0 4px 0', fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {selectedJob.productName}
+              </h4>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                Vendor: <strong>{selectedJob.vendorName}</strong> | Weight: {selectedJob.package.weightKg} kg
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}>
+              <div style={{ border: '1px solid var(--color-border-default)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <MapPin size={14} /> PICKUP LOCATION
+                </span>
+                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{selectedJob.pickup.address}</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>{selectedJob.pickup.city}</p>
+                {selectedJob.pickup.contactPhone && (
+                  <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Phone size={12} /> {selectedJob.pickup.contactPhone}
+                  </p>
+                )}
+              </div>
+
+              <div style={{ border: '1px solid var(--color-border-default)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Navigation size={14} /> DROP-OFF DESTINATION
+                </span>
+                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{selectedJob.destination.address}</p>
+                <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>{selectedJob.destination.city}</p>
+                <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <UserIcon size={12} /> {selectedJob.recipient.name} ({selectedJob.recipient.phone})
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-default)' }}>
+              <div>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>Estimated Payout</span>
+                <p style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#10B981', margin: 0 }}>
+                  ₦{selectedJob.estimatedPrice.toLocaleString()}
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                <Button variant="outline" onClick={() => setSelectedJob(null)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onClick={() => handleAcceptJob(selectedJob)}>
+                  Accept Dispatch
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
+

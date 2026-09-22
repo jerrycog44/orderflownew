@@ -30,9 +30,10 @@ import { ProviderOnboardingPage } from './pages/ProviderOnboardingPage';
 import { VendorDashboardPage } from './pages/VendorDashboardPage';
 import { ProviderDashboardPage } from './pages/ProviderDashboardPage';
 
-// Phase 3 Delivery Pages
+// Phase 3 & 4 Delivery Pages
 import { CreateDeliveryPage } from './pages/CreateDeliveryPage';
 import { VendorDeliveryDetailPage } from './pages/VendorDeliveryDetailPage';
+import { CustomerTrackingPage } from './pages/CustomerTrackingPage';
 
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 
@@ -58,6 +59,8 @@ export function App() {
                   </>
                 }
               />
+              <Route path="/track" element={<CustomerTrackingPage />} />
+              <Route path="/track/:trackingCode" element={<CustomerTrackingPage />} />
             </Route>
 
             {/* 2. AUTHENTICATION FLOW (Clean Auth Shell, NO marketing Navbar/Footer) */}
