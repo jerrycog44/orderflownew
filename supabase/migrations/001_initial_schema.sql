@@ -49,12 +49,12 @@ CREATE TYPE opportunity_status_enum AS ENUM (
 -- ----------------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $function$
 BEGIN
   NEW.updated_at = NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$function$ LANGUAGE plpgsql;
 
 -- ----------------------------------------------------------------------------
 -- 3. APPLICATION TABLES
@@ -255,7 +255,7 @@ RETURNS TABLE (
 LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
-AS $$
+AS $function$
   SELECT 
     v.tracking_code,
     v.status,
@@ -269,13 +269,47 @@ AS $$
   FROM public_tracking_view v
   WHERE LOWER(v.tracking_code) = LOWER(TRIM(p_tracking_code))
   LIMIT 1;
-$$;
+$function$;
 
 -- Grant execution of public tracking RPC to anonymous visitors
 GRANT EXECUTE ON FUNCTION get_public_tracking(TEXT) TO anon, authenticated;
 
 -- ----------------------------------------------------------------------------
--- 6. ROW LEVEL SECURITY (RLS) POLICIES
+-- 6. RLS AUTHORIZATION SECURITY DEFINER HELPER FUNCTIONS
+-- Breaks circular RLS evaluation dependency between deliveries and dispatch_opportunities
+-- ----------------------------------------------------------------------------
+
+-- Helper 1: Checks if provider has an active sent opportunity for a delivery
+CREATE OR REPLACE FUNCTION has_active_dispatch_opportunity(p_delivery_id UUID, p_provider_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM dispatch_opportunities dop
+    WHERE dop.delivery_id = p_delivery_id
+      AND dop.provider_id = p_provider_id
+      AND dop.status = 'sent'
+  );
+$function$;
+
+-- Helper 2: Checks if vendor is the owner of a delivery
+CREATE OR REPLACE FUNCTION is_delivery_owner(p_delivery_id UUID, p_vendor_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $function$
+  SELECT EXISTS (
+    SELECT 1 FROM deliveries d
+    WHERE d.id = p_delivery_id
+      AND d.vendor_id = p_vendor_id
+  );
+$function$;
+
+-- ----------------------------------------------------------------------------
+-- 7. ROW LEVEL SECURITY (RLS) POLICIES
 -- ----------------------------------------------------------------------------
 
 -- Enable RLS on all 9 application tables
@@ -355,12 +389,7 @@ CREATE POLICY "Providers can view assigned or targeted deliveries"
   ON deliveries FOR SELECT
   USING (
     provider_id = auth.uid() OR
-    EXISTS (
-      SELECT 1 FROM dispatch_opportunities do
-      WHERE do.delivery_id = deliveries.id
-        AND do.provider_id = auth.uid()
-        AND do.status = 'sent'
-    )
+    has_active_dispatch_opportunity(id, auth.uid())
   );
 
 CREATE POLICY "Vendors can create deliveries"
@@ -378,39 +407,21 @@ CREATE POLICY "Assigned providers can update status of assigned deliveries"
 -- POLICIES: PACKAGE_DETAILS
 CREATE POLICY "Vendors can view package details for their deliveries"
   ON package_details FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM deliveries d
-      WHERE d.id = package_details.delivery_id AND d.vendor_id = auth.uid()
-    )
-  );
+  USING (is_delivery_owner(delivery_id, auth.uid()));
 
 CREATE POLICY "Providers can view package details for targeted/assigned deliveries"
   ON package_details FOR SELECT
   USING (
     EXISTS (
       SELECT 1 FROM deliveries d
-      WHERE d.id = package_details.delivery_id
-        AND (
-          d.provider_id = auth.uid() OR
-          EXISTS (
-            SELECT 1 FROM dispatch_opportunities do
-            WHERE do.delivery_id = d.id
-              AND do.provider_id = auth.uid()
-              AND do.status = 'sent'
-          )
-        )
-    )
+      WHERE d.id = package_details.delivery_id AND d.provider_id = auth.uid()
+    ) OR
+    has_active_dispatch_opportunity(delivery_id, auth.uid())
   );
 
 CREATE POLICY "Vendors can insert package details for their deliveries"
   ON package_details FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM deliveries d
-      WHERE d.id = package_details.delivery_id AND d.vendor_id = auth.uid()
-    )
-  );
+  WITH CHECK (is_delivery_owner(delivery_id, auth.uid()));
 
 -- POLICIES: DISPATCH_OPPORTUNITIES
 CREATE POLICY "Providers can view opportunities sent to them"
@@ -419,12 +430,7 @@ CREATE POLICY "Providers can view opportunities sent to them"
 
 CREATE POLICY "Vendors can view opportunities for their deliveries"
   ON dispatch_opportunities FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM deliveries d
-      WHERE d.id = dispatch_opportunities.delivery_id AND d.vendor_id = auth.uid()
-    )
-  );
+  USING (is_delivery_owner(delivery_id, auth.uid()));
 
 CREATE POLICY "Providers can update opportunity response status"
   ON dispatch_opportunities FOR UPDATE
@@ -435,15 +441,15 @@ CREATE POLICY "Providers can update opportunity response status"
 CREATE POLICY "Users can view status history for their relevant deliveries"
   ON delivery_status_history FOR SELECT
   USING (
+    is_delivery_owner(delivery_id, auth.uid()) OR
     EXISTS (
       SELECT 1 FROM deliveries d
-      WHERE d.id = delivery_status_history.delivery_id
-        AND (d.vendor_id = auth.uid() OR d.provider_id = auth.uid())
+      WHERE d.id = delivery_status_history.delivery_id AND d.provider_id = auth.uid()
     )
   );
 
 -- ----------------------------------------------------------------------------
--- 7. REALTIME PUBLICATION SETUP
+-- 8. REALTIME PUBLICATION SETUP
 -- Enable Realtime broadcasting on state-critical tables
 -- ----------------------------------------------------------------------------
 
