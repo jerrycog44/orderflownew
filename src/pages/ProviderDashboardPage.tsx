@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, Package, MapPin, Navigation, ArrowRight } from 'lucide-react';
+import { Truck, LogOut, MapPin, Navigation, ArrowRight } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
