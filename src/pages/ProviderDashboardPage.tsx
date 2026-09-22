@@ -90,6 +90,14 @@ export const ProviderDashboardPage: React.FC = () => {
       setSelectedJob(null);
       refreshData();
       setActiveTab('assigned');
+    } else {
+      addToast({
+        title: 'Opportunity No Longer Available',
+        description: `Delivery ${job.id} has already been assigned to another provider or cancelled.`,
+        type: 'error',
+      });
+      setSelectedJob(null);
+      refreshData();
     }
   };
 

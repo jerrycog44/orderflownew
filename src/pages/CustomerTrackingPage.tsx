@@ -9,6 +9,7 @@ import './CustomerTrackingPage.css';
 
 const TRACKING_STEPS = [
   { key: 'created', label: 'Order Created' },
+  { key: 'dispatching', label: 'Dispatching' },
   { key: 'provider_selected', label: 'Provider Matched' },
   { key: 'in_transit', label: 'In Transit' },
   { key: 'delivered', label: 'Delivered' },
@@ -16,18 +17,21 @@ const TRACKING_STEPS = [
 
 const getStepIndex = (status: string): number => {
   switch (status) {
+    case 'draft':
     case 'created':
-    case 'searching':
       return 0;
+    case 'searching':
+    case 'opportunity_sent':
+      return 1;
     case 'provider_selected':
     case 'awaiting_pickup':
-      return 1;
-    case 'in_transit':
       return 2;
-    case 'delivered':
+    case 'in_transit':
       return 3;
+    case 'delivered':
+      return 4;
     default:
-      return 0;
+      return 1;
   }
 };
 
@@ -124,14 +128,7 @@ export const CustomerTrackingPage: React.FC = () => {
           <div
             className="tracking-timeline"
             style={{
-              ['--timeline-progress' as string]:
-                currentStep === 0
-                  ? '0%'
-                  : currentStep === 1
-                  ? '33%'
-                  : currentStep === 2
-                  ? '67%'
-                  : '100%',
+              ['--timeline-progress' as string]: `${(currentStep / (TRACKING_STEPS.length - 1)) * 100}%`,
             }}
             aria-label="Delivery progress timeline"
           >

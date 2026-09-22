@@ -199,9 +199,26 @@ export const VendorDeliveryDetailPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-              Searching for matching logistics provider...
-            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)', borderLeft: '3px solid var(--color-warning)' }}>
+                <h4 style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-warning)', fontWeight: 700, margin: '0 0 var(--space-1) 0', textTransform: 'uppercase' }}>
+                  {delivery.status === 'opportunity_sent' ? 'Smart Dispatch Active' : 'Provider Matching in Progress'}
+                </h4>
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                  {delivery.status === 'opportunity_sent'
+                    ? 'OrderFlow has sent a targeted delivery opportunity to the top-ranked candidate provider. Waiting for provider confirmation.'
+                    : 'OrderFlow is actively scanning eligible logistics partners covering your pickup and destination area.'}
+                </p>
+              </div>
+              <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>
+                  Estimated Fare Range
+                </span>
+                <span style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-brand-accent)' }}>
+                  ₦{delivery.estimatedPrice.toLocaleString()}
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
