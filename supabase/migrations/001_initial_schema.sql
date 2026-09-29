@@ -350,35 +350,23 @@ ALTER TABLE delivery_status_history ENABLE ROW LEVEL SECURITY;
 
 -- POLICIES: PROFILES
 DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-CREATE POLICY "Users can view their own profile"
-  ON profiles FOR SELECT
-  USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-CREATE POLICY "Users can update their own profile"
-  ON profiles FOR UPDATE
-  USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Users can insert their own profile on signup" ON profiles;
-CREATE POLICY "Users can insert their own profile on signup"
-  ON profiles FOR INSERT
+DROP POLICY IF EXISTS "Users can manage their own profile" ON profiles;
+CREATE POLICY "Users can manage their own profile"
+  ON profiles FOR ALL
+  USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
 -- POLICIES: VENDORS
 DROP POLICY IF EXISTS "Vendors can view their own record" ON vendors;
-CREATE POLICY "Vendors can view their own record"
-  ON vendors FOR SELECT
-  USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Vendors can insert their own record" ON vendors;
-CREATE POLICY "Vendors can insert their own record"
-  ON vendors FOR INSERT
-  WITH CHECK (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Vendors can update their own record" ON vendors;
-CREATE POLICY "Vendors can update their own record"
-  ON vendors FOR UPDATE
-  USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Vendors can manage their own record" ON vendors;
+CREATE POLICY "Vendors can manage their own record"
+  ON vendors FOR ALL
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- POLICIES: LOGISTICS_PROVIDERS
 DROP POLICY IF EXISTS "Public authenticated users can view provider profiles" ON logistics_providers;
@@ -388,14 +376,12 @@ CREATE POLICY "Public authenticated users can view provider profiles"
   USING (TRUE);
 
 DROP POLICY IF EXISTS "Providers can insert their own record" ON logistics_providers;
-CREATE POLICY "Providers can insert their own record"
-  ON logistics_providers FOR INSERT
-  WITH CHECK (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Providers can update their own record" ON logistics_providers;
-CREATE POLICY "Providers can update their own record"
-  ON logistics_providers FOR UPDATE
-  USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Providers can manage their own record" ON logistics_providers;
+CREATE POLICY "Providers can manage their own record"
+  ON logistics_providers FOR ALL
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
 
 -- POLICIES: PROVIDER_AVAILABILITY
 DROP POLICY IF EXISTS "Authenticated users can view provider availability" ON provider_availability;
