@@ -2,47 +2,66 @@
 -- ORDERFLOW DATABASE MIGRATION 001: INITIAL SCHEMA & SECURITY POLICIES
 -- Target Engine: Supabase PostgreSQL 15+
 -- Architecture Blueprint: docs/phase-6.1-database-architecture.md
+-- Fully Idempotent Migration Script (Safe to re-run multiple times)
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 1. CUSTOM ENUMS
 -- ----------------------------------------------------------------------------
 
-CREATE TYPE user_role AS ENUM ('vendor', 'logistics_provider');
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('vendor', 'logistics_provider');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE availability_status AS ENUM ('available', 'busy', 'unavailable');
+DO $$ BEGIN
+  CREATE TYPE availability_status AS ENUM ('available', 'busy', 'unavailable');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE delivery_status AS ENUM (
-  'draft',
-  'searching',
-  'opportunity_sent',
-  'created',
-  'provider_selected',
-  'awaiting_pickup',
-  'picked_up',
-  'in_transit',
-  'delivered',
-  'cancelled'
-);
+DO $$ BEGIN
+  CREATE TYPE delivery_status AS ENUM (
+    'draft',
+    'searching',
+    'opportunity_sent',
+    'created',
+    'provider_selected',
+    'awaiting_pickup',
+    'picked_up',
+    'in_transit',
+    'delivered',
+    'cancelled'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE dispatch_mode_enum AS ENUM ('auto', 'manual');
+DO $$ BEGIN
+  CREATE TYPE dispatch_mode_enum AS ENUM ('auto', 'manual');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE package_type_enum AS ENUM (
-  'parcel',
-  'box',
-  'bag',
-  'fragile_item',
-  'other'
-);
+DO $$ BEGIN
+  CREATE TYPE package_type_enum AS ENUM (
+    'parcel',
+    'box',
+    'bag',
+    'fragile_item',
+    'other'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE opportunity_status_enum AS ENUM (
-  'queued',
-  'sent',
-  'accepted',
-  'declined',
-  'expired',
-  'skipped'
-);
+DO $$ BEGIN
+  CREATE TYPE opportunity_status_enum AS ENUM (
+    'queued',
+    'sent',
+    'accepted',
+    'declined',
+    'expired',
+    'skipped'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ----------------------------------------------------------------------------
 -- 2. UPDATED_AT TRIGGER FUNCTION
@@ -61,7 +80,7 @@ $function$ LANGUAGE plpgsql;
 -- ----------------------------------------------------------------------------
 
 -- Table 1: PROFILES (Extends auth.users 1:1)
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   role user_role NOT NULL,
   full_name TEXT NOT NULL,
@@ -74,12 +93,13 @@ CREATE TABLE profiles (
   CONSTRAINT chk_profiles_phone_format CHECK (phone ~ '^\+[1-9]\d{1,14}$')
 );
 
+DROP TRIGGER IF EXISTS set_profiles_updated_at ON profiles;
 CREATE TRIGGER set_profiles_updated_at
   BEFORE UPDATE ON profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Table 2: VENDORS (1:1 with profiles)
-CREATE TABLE vendors (
+CREATE TABLE IF NOT EXISTS vendors (
   id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
   business_name TEXT NOT NULL,
   business_category TEXT NOT NULL,
@@ -88,12 +108,13 @@ CREATE TABLE vendors (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_vendors_updated_at ON vendors;
 CREATE TRIGGER set_vendors_updated_at
   BEFORE UPDATE ON vendors
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Table 3: LOGISTICS_PROVIDERS (1:1 with profiles)
-CREATE TABLE logistics_providers (
+CREATE TABLE IF NOT EXISTS logistics_providers (
   id UUID PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
   provider_name TEXT NOT NULL,
   provider_type TEXT NOT NULL,
@@ -108,23 +129,25 @@ CREATE TABLE logistics_providers (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_logistics_providers_updated_at ON logistics_providers;
 CREATE TRIGGER set_logistics_providers_updated_at
   BEFORE UPDATE ON logistics_providers
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Table 4: PROVIDER_AVAILABILITY (1:1 with logistics_providers)
-CREATE TABLE provider_availability (
+CREATE TABLE IF NOT EXISTS provider_availability (
   provider_id UUID PRIMARY KEY REFERENCES logistics_providers(id) ON DELETE CASCADE,
   status availability_status NOT NULL DEFAULT 'available',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_provider_availability_updated_at ON provider_availability;
 CREATE TRIGGER set_provider_availability_updated_at
   BEFORE UPDATE ON provider_availability
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Table 5: DRIVERS (Managed by logistics_providers)
-CREATE TABLE drivers (
+CREATE TABLE IF NOT EXISTS drivers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   provider_id UUID NOT NULL REFERENCES logistics_providers(id) ON DELETE CASCADE,
   full_name TEXT NOT NULL,
@@ -136,7 +159,7 @@ CREATE TABLE drivers (
 );
 
 -- Table 6: DELIVERIES
-CREATE TABLE deliveries (
+CREATE TABLE IF NOT EXISTS deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tracking_code TEXT NOT NULL UNIQUE,
   vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE RESTRICT,
@@ -159,12 +182,13 @@ CREATE TABLE deliveries (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DROP TRIGGER IF EXISTS set_deliveries_updated_at ON deliveries;
 CREATE TRIGGER set_deliveries_updated_at
   BEFORE UPDATE ON deliveries
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Table 7: PACKAGE_DETAILS (1:1 with deliveries)
-CREATE TABLE package_details (
+CREATE TABLE IF NOT EXISTS package_details (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id UUID NOT NULL UNIQUE REFERENCES deliveries(id) ON DELETE CASCADE,
   product_name TEXT NOT NULL,
@@ -181,7 +205,7 @@ CREATE TABLE package_details (
 );
 
 -- Table 8: DISPATCH_OPPORTUNITIES
-CREATE TABLE dispatch_opportunities (
+CREATE TABLE IF NOT EXISTS dispatch_opportunities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
   provider_id UUID NOT NULL REFERENCES logistics_providers(id) ON DELETE CASCADE,
@@ -194,7 +218,7 @@ CREATE TABLE dispatch_opportunities (
 );
 
 -- Table 9: DELIVERY_STATUS_HISTORY
-CREATE TABLE delivery_status_history (
+CREATE TABLE IF NOT EXISTS delivery_status_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id UUID NOT NULL REFERENCES deliveries(id) ON DELETE CASCADE,
   previous_status delivery_status,
@@ -208,14 +232,14 @@ CREATE TABLE delivery_status_history (
 -- 4. INDEXES
 -- ----------------------------------------------------------------------------
 
-CREATE INDEX idx_deliveries_tracking_code ON deliveries(tracking_code);
-CREATE INDEX idx_deliveries_vendor_id ON deliveries(vendor_id);
-CREATE INDEX idx_deliveries_provider_id ON deliveries(provider_id);
-CREATE INDEX idx_deliveries_status ON deliveries(status);
-CREATE INDEX idx_dispatch_opps_provider_status ON dispatch_opportunities(provider_id, status);
-CREATE INDEX idx_dispatch_opps_delivery_rank ON dispatch_opportunities(delivery_id, rank_order);
-CREATE INDEX idx_profiles_phone ON profiles(phone);
-CREATE INDEX idx_provider_availability_status ON provider_availability(status);
+CREATE INDEX IF NOT EXISTS idx_deliveries_tracking_code ON deliveries(tracking_code);
+CREATE INDEX IF NOT EXISTS idx_deliveries_vendor_id ON deliveries(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_provider_id ON deliveries(provider_id);
+CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status);
+CREATE INDEX IF NOT EXISTS idx_dispatch_opps_provider_status ON dispatch_opportunities(provider_id, status);
+CREATE INDEX IF NOT EXISTS idx_dispatch_opps_delivery_rank ON dispatch_opportunities(delivery_id, rank_order);
+CREATE INDEX IF NOT EXISTS idx_profiles_phone ON profiles(phone);
+CREATE INDEX IF NOT EXISTS idx_provider_availability_status ON provider_availability(status);
 
 -- ----------------------------------------------------------------------------
 -- 5. SECURE PUBLIC TRACKING VIEW & RPC FUNCTION
@@ -223,7 +247,8 @@ CREATE INDEX idx_provider_availability_status ON provider_availability(status);
 -- Excludes recipient phone, vendor contact, and provider private internal details.
 -- ----------------------------------------------------------------------------
 
-CREATE OR REPLACE VIEW public_tracking_view AS
+CREATE OR REPLACE VIEW public_tracking_view
+WITH (security_invoker = true) AS
 SELECT 
   d.tracking_code,
   d.status,
@@ -324,67 +349,81 @@ ALTER TABLE dispatch_opportunities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE delivery_status_history ENABLE ROW LEVEL SECURITY;
 
 -- POLICIES: PROFILES
+DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
 CREATE POLICY "Users can view their own profile"
   ON profiles FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
 CREATE POLICY "Users can update their own profile"
   ON profiles FOR UPDATE
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert their own profile on signup" ON profiles;
 CREATE POLICY "Users can insert their own profile on signup"
   ON profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
 
 -- POLICIES: VENDORS
+DROP POLICY IF EXISTS "Vendors can view their own record" ON vendors;
 CREATE POLICY "Vendors can view their own record"
   ON vendors FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Vendors can insert their own record" ON vendors;
 CREATE POLICY "Vendors can insert their own record"
   ON vendors FOR INSERT
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Vendors can update their own record" ON vendors;
 CREATE POLICY "Vendors can update their own record"
   ON vendors FOR UPDATE
   USING (auth.uid() = id);
 
 -- POLICIES: LOGISTICS_PROVIDERS
+DROP POLICY IF EXISTS "Public authenticated users can view provider profiles" ON logistics_providers;
 CREATE POLICY "Public authenticated users can view provider profiles"
   ON logistics_providers FOR SELECT
   TO authenticated
   USING (TRUE);
 
+DROP POLICY IF EXISTS "Providers can insert their own record" ON logistics_providers;
 CREATE POLICY "Providers can insert their own record"
   ON logistics_providers FOR INSERT
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Providers can update their own record" ON logistics_providers;
 CREATE POLICY "Providers can update their own record"
   ON logistics_providers FOR UPDATE
   USING (auth.uid() = id);
 
 -- POLICIES: PROVIDER_AVAILABILITY
+DROP POLICY IF EXISTS "Authenticated users can view provider availability" ON provider_availability;
 CREATE POLICY "Authenticated users can view provider availability"
   ON provider_availability FOR SELECT
   TO authenticated
   USING (TRUE);
 
+DROP POLICY IF EXISTS "Providers can update their own availability" ON provider_availability;
 CREATE POLICY "Providers can update their own availability"
   ON provider_availability FOR ALL
   USING (auth.uid() = provider_id)
   WITH CHECK (auth.uid() = provider_id);
 
 -- POLICIES: DRIVERS
+DROP POLICY IF EXISTS "Providers can manage their own fleet drivers" ON drivers;
 CREATE POLICY "Providers can manage their own fleet drivers"
   ON drivers FOR ALL
   USING (auth.uid() = provider_id)
   WITH CHECK (auth.uid() = provider_id);
 
 -- POLICIES: DELIVERIES
+DROP POLICY IF EXISTS "Vendors can view their own created deliveries" ON deliveries;
 CREATE POLICY "Vendors can view their own created deliveries"
   ON deliveries FOR SELECT
   USING (auth.uid() = vendor_id);
 
+DROP POLICY IF EXISTS "Providers can view assigned or targeted deliveries" ON deliveries;
 CREATE POLICY "Providers can view assigned or targeted deliveries"
   ON deliveries FOR SELECT
   USING (
@@ -392,23 +431,28 @@ CREATE POLICY "Providers can view assigned or targeted deliveries"
     has_active_dispatch_opportunity(id, auth.uid())
   );
 
+DROP POLICY IF EXISTS "Vendors can create deliveries" ON deliveries;
 CREATE POLICY "Vendors can create deliveries"
   ON deliveries FOR INSERT
   WITH CHECK (auth.uid() = vendor_id);
 
+DROP POLICY IF EXISTS "Vendors can update unassigned deliveries" ON deliveries;
 CREATE POLICY "Vendors can update unassigned deliveries"
   ON deliveries FOR UPDATE
   USING (auth.uid() = vendor_id AND (status = 'created' OR status = 'searching' OR status = 'draft'));
 
+DROP POLICY IF EXISTS "Assigned providers can update status of assigned deliveries" ON deliveries;
 CREATE POLICY "Assigned providers can update status of assigned deliveries"
   ON deliveries FOR UPDATE
   USING (provider_id = auth.uid());
 
 -- POLICIES: PACKAGE_DETAILS
+DROP POLICY IF EXISTS "Vendors can view package details for their deliveries" ON package_details;
 CREATE POLICY "Vendors can view package details for their deliveries"
   ON package_details FOR SELECT
   USING (is_delivery_owner(delivery_id, auth.uid()));
 
+DROP POLICY IF EXISTS "Providers can view package details for targeted/assigned deliveries" ON package_details;
 CREATE POLICY "Providers can view package details for targeted/assigned deliveries"
   ON package_details FOR SELECT
   USING (
@@ -419,25 +463,30 @@ CREATE POLICY "Providers can view package details for targeted/assigned deliveri
     has_active_dispatch_opportunity(delivery_id, auth.uid())
   );
 
+DROP POLICY IF EXISTS "Vendors can insert package details for their deliveries" ON package_details;
 CREATE POLICY "Vendors can insert package details for their deliveries"
   ON package_details FOR INSERT
   WITH CHECK (is_delivery_owner(delivery_id, auth.uid()));
 
 -- POLICIES: DISPATCH_OPPORTUNITIES
+DROP POLICY IF EXISTS "Providers can view opportunities sent to them" ON dispatch_opportunities;
 CREATE POLICY "Providers can view opportunities sent to them"
   ON dispatch_opportunities FOR SELECT
   USING (provider_id = auth.uid());
 
+DROP POLICY IF EXISTS "Vendors can view opportunities for their deliveries" ON dispatch_opportunities;
 CREATE POLICY "Vendors can view opportunities for their deliveries"
   ON dispatch_opportunities FOR SELECT
   USING (is_delivery_owner(delivery_id, auth.uid()));
 
+DROP POLICY IF EXISTS "Providers can update opportunity response status" ON dispatch_opportunities;
 CREATE POLICY "Providers can update opportunity response status"
   ON dispatch_opportunities FOR UPDATE
   USING (provider_id = auth.uid() AND status = 'sent')
   WITH CHECK (provider_id = auth.uid());
 
 -- POLICIES: DELIVERY_STATUS_HISTORY
+DROP POLICY IF EXISTS "Users can view status history for their relevant deliveries" ON delivery_status_history;
 CREATE POLICY "Users can view status history for their relevant deliveries"
   ON delivery_status_history FOR SELECT
   USING (
@@ -450,12 +499,23 @@ CREATE POLICY "Users can view status history for their relevant deliveries"
 
 -- ----------------------------------------------------------------------------
 -- 8. REALTIME PUBLICATION SETUP
--- Enable Realtime broadcasting on state-critical tables
+-- Enable Realtime broadcasting on state-critical tables safely
 -- ----------------------------------------------------------------------------
 
-ALTER PUBLICATION supabase_realtime ADD TABLE deliveries;
-ALTER PUBLICATION supabase_realtime ADD TABLE dispatch_opportunities;
-ALTER PUBLICATION supabase_realtime ADD TABLE provider_availability;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE deliveries;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE dispatch_opportunities;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE provider_availability;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- ============================================================================
 -- END OF MIGRATION 001
