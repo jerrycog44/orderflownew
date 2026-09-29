@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Menu, X, ArrowRight, Truck, User } from 'lucide-react';
+import { Menu, X, ArrowRight, User } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { OrderFlowLogo } from '../ui/OrderFlowLogo';
 import { useAuth } from '../../auth/AuthContext';
 import './Navbar.css';
 
@@ -64,17 +65,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className={`of-navbar ${scrolled ? 'of-navbar-scrolled' : ''}`}>
       <div className="container of-navbar-container">
-        {/* Logo */}
+        {/* Brand Logo */}
         <Link to="/" className="of-logo" aria-label="OrderFlow Home">
-          <div className="of-logo-icon">
-            <Truck size={20} color="#FFFFFF" />
-          </div>
-          <span className="of-logo-text">
-            Order<span className="of-logo-accent">Flow</span>
-          </span>
+          <OrderFlowLogo size={30} variant="light" showText={true} />
         </Link>
 
-        {/* Desktop Links */}
+        {/* Desktop Navigation */}
         <nav className="of-nav-desktop" aria-label="Main Navigation">
           <button onClick={() => scrollToSection('how-it-works')} className="of-nav-link">
             How It Works
@@ -102,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     user?.role === 'vendor' ? '/dashboard/vendor' : '/dashboard/provider'
                   )
                 }
-                leftIcon={<User size={16} />}
+                leftIcon={<User size={15} />}
               >
                 Dashboard
               </Button>
@@ -119,7 +115,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 variant="primary"
                 size="sm"
                 onClick={handleVendorClick}
-                rightIcon={<ArrowRight size={16} />}
+                rightIcon={<ArrowRight size={15} />}
               >
                 Get started
               </Button>
@@ -134,7 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           aria-expanded={mobileMenuOpen}
           aria-label={mobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
         >
-          {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
 
         {/* Mobile Navigation Drawer */}
@@ -159,6 +155,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="of-mobile-nav-link"
                 >
                   For Providers
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    navigate('/track');
+                  }}
+                  className="of-mobile-nav-link"
+                >
+                  Track Order
                 </button>
               </nav>
 

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight } from 'lucide-react';
+import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import type { VendorProfile, DeliveryRecord } from '../types';
+import './VendorDashboardPage.css';
 
 export const VendorDashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -55,7 +56,6 @@ export const VendorDashboardPage: React.FC = () => {
   };
 
   const filteredDeliveries = deliveries.filter((d) => {
-    // Search matching
     const query = searchQuery.trim().toLowerCase();
     const matchesQuery =
       !query ||
@@ -64,7 +64,6 @@ export const VendorDashboardPage: React.FC = () => {
       d.recipient.name.toLowerCase().includes(query) ||
       d.destination.city.toLowerCase().includes(query);
 
-    // Filter matching
     let matchesStatus = true;
     if (statusFilter === 'pending') {
       matchesStatus = d.status === 'created' || d.status === 'searching' || d.status === 'opportunity_sent' || d.status === 'awaiting_pickup' || d.status === 'provider_selected';
@@ -87,163 +86,112 @@ export const VendorDashboardPage: React.FC = () => {
   const deliveredCount = deliveries.filter((d) => d.status === 'delivered').length;
 
   return (
-    <div style={{ maxWidth: '1140px', margin: '0 auto', padding: 'var(--space-8) var(--space-4)' }}>
-      {/* Top Banner Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 'var(--space-4)',
-          marginBottom: 'var(--space-8)',
-          paddingBottom: 'var(--space-6)',
-          borderBottom: '1px solid var(--color-border-default)',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
-            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              Vendor Dashboard
-            </h1>
+    <div className="of-dashboard-layout">
+      {/* Header */}
+      <div className="of-dashboard-header">
+        <div className="of-dashboard-title-group">
+          <div className="of-dashboard-title-row">
+            <h1 className="of-dashboard-h1">Vendor Workspace</h1>
             <Badge variant="brand">Vendor</Badge>
           </div>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-            Welcome back, <strong>{user?.fullName || 'Vendor'}</strong>. Manage your deliveries and request logistics providers.
+          <p className="of-dashboard-subtitle">
+            Manage your delivery dispatches and connect with verified logistics providers.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <div className="of-dashboard-actions">
           <Button
             variant="primary"
             size="md"
             onClick={() => navigate('/vendor/deliveries/create')}
-            leftIcon={<Plus size={18} />}
+            leftIcon={<Plus size={16} />}
           >
             Create Delivery
           </Button>
 
           <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut size={16} style={{ marginRight: '6px' }} />
+            <LogOut size={15} />
             Sign out
           </Button>
         </div>
       </div>
 
-      {/* Overview Stats Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 'var(--space-4)',
-          marginBottom: 'var(--space-8)',
-        }}
-      >
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-2)' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Total Deliveries
-            </span>
-            <Package size={20} color="var(--color-brand-accent)" />
+      {/* Metrics Row */}
+      <div className="of-metrics-grid">
+        <div className="of-metric-card">
+          <div className="of-metric-header">
+            <span className="of-metric-label">Total Requests</span>
+            <Package size={18} color="var(--color-brand-accent)" />
           </div>
-          <p style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-            {deliveries.length}
-          </p>
+          <p className="of-metric-value">{deliveries.length}</p>
+          <span className="of-metric-subtext">All time volume</span>
         </div>
 
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-2)' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Pending Dispatch
-            </span>
-            <Clock size={20} color="#F59E0B" />
+        <div className="of-metric-card">
+          <div className="of-metric-header">
+            <span className="of-metric-label">Pending Dispatch</span>
+            <Clock size={18} color="#D97706" />
           </div>
-          <p style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-            {pendingCount}
-          </p>
+          <p className="of-metric-value">{pendingCount}</p>
+          <span className="of-metric-subtext">Awaiting pickup/match</span>
         </div>
 
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-2)' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              In Transit
-            </span>
-            <Truck size={20} color="var(--color-brand-accent)" />
+        <div className="of-metric-card">
+          <div className="of-metric-header">
+            <span className="of-metric-label">In Transit</span>
+            <Truck size={18} color="var(--color-brand-accent)" />
           </div>
-          <p style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-            {inTransitCount}
-          </p>
+          <p className="of-metric-value">{inTransitCount}</p>
+          <span className="of-metric-subtext">Live on road</span>
         </div>
 
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--color-text-tertiary)', marginBottom: 'var(--space-2)' }}>
-            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Delivered
-            </span>
-            <CheckCircle2 size={20} color="#10B981" />
+        <div className="of-metric-card">
+          <div className="of-metric-header">
+            <span className="of-metric-label">Delivered</span>
+            <CheckCircle2 size={18} color="#16A34A" />
           </div>
-          <p style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-            {deliveredCount}
-          </p>
+          <p className="of-metric-value">{deliveredCount}</p>
+          <span className="of-metric-subtext">Completed orders</span>
         </div>
       </div>
 
-      {/* Main Grid: Deliveries Table vs Profile */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2.5fr) minmax(280px, 1fr)', gap: 'var(--space-6)' }}>
-        {/* Deliveries List */}
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-4)', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+      {/* Content Grid */}
+      <div className="of-dashboard-grid">
+        {/* Deliveries Panel */}
+        <div className="of-panel">
+          <div className="of-panel-header">
             <div>
-              <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                Deliveries Management
-              </h2>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                Track active requests, provider dispatches, and order statuses
+              <h2 className="of-panel-title">Deliveries Directory</h2>
+              <span className="of-panel-subtitle">
+                Track active requests, dispatches, and status updates
               </span>
             </div>
 
-            <Button variant="primary" size="sm" onClick={() => navigate('/vendor/deliveries/create')} leftIcon={<Plus size={16} />}>
+            <Button variant="primary" size="sm" onClick={() => navigate('/vendor/deliveries/create')} leftIcon={<Plus size={15} />}>
               Create Delivery
             </Button>
           </div>
 
-          {/* Search & Filter Controls */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-5)', alignItems: 'center' }}>
-            <div style={{ flex: '1', minWidth: '220px' }}>
+          {/* Filter Bar */}
+          <div className="of-filter-bar">
+            <div className="of-filter-input" style={{ position: 'relative' }}>
               <input
                 type="text"
-                placeholder="Search by ID, item name, or recipient..."
+                placeholder="Search by ID, product, or recipient..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: 'var(--space-2) var(--space-3)',
-                  fontSize: 'var(--font-size-sm)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  background: 'var(--color-bg-subtle)',
-                  color: 'var(--color-text-primary)',
-                }}
+                className="of-input"
+                style={{ height: '38px', paddingLeft: '34px' }}
               />
+              <Search size={15} style={{ position: 'absolute', left: '11px', top: '12px', color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+            <div className="of-filter-pills">
               {(['all', 'pending', 'in_transit', 'delivered'] as const).map((filterKey) => (
                 <button
                   key={filterKey}
                   onClick={() => setStatusFilter(filterKey)}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-full)',
-                    fontSize: 'var(--font-size-xs)',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    border: '1px solid',
-                    background: statusFilter === filterKey ? 'var(--color-brand-primary)' : 'transparent',
-                    color: statusFilter === filterKey ? '#ffffff' : 'var(--color-text-secondary)',
-                    borderColor: statusFilter === filterKey ? 'var(--color-brand-primary)' : 'var(--color-border-default)',
-                    textTransform: 'capitalize',
-                  }}
+                  className={`of-filter-pill ${statusFilter === filterKey ? 'is-active' : ''}`}
                 >
                   {filterKey === 'pending' ? 'In Progress' : filterKey.replace('_', ' ')}
                 </button>
@@ -251,66 +199,46 @@ export const VendorDashboardPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Deliveries List */}
           {filteredDeliveries.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-              <Package size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
-              <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+              <Package size={32} color="var(--color-text-muted)" style={{ marginBottom: '12px' }} />
+              <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '4px' }}>
                 No matching deliveries found
               </h3>
-              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginBottom: 'var(--space-4)' }}>
+              <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
                 {searchQuery ? 'Try clearing your search terms or filter selection.' : 'Create your first delivery request to get started.'}
               </p>
               {!searchQuery && (
-                <Button variant="primary" onClick={() => navigate('/vendor/deliveries/create')}>
+                <Button variant="primary" size="sm" onClick={() => navigate('/vendor/deliveries/create')}>
                   Create First Delivery
                 </Button>
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+            <div className="of-delivery-list">
               {filteredDeliveries.map((delivery) => (
                 <div
                   key={delivery.id}
                   onClick={() => navigate(`/vendor/deliveries/${delivery.id}`)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--space-4)',
-                    background: 'var(--color-bg-subtle)',
-                    border: '1px solid var(--color-border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    transition: 'border-color var(--transition-fast)',
-                  }}
+                  className="of-delivery-row"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                    <div
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: 'var(--radius-md)',
-                        background: 'var(--color-brand-accent-light)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--color-brand-accent)',
-                      }}
-                    >
+                  <div className="of-delivery-meta">
+                    <div className="of-delivery-icon-box">
                       <Package size={18} />
                     </div>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
+                    <div className="of-delivery-info">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '12px', color: 'var(--color-brand-accent)' }}>
                           {delivery.id}
                         </span>
-                        <span style={{ fontWeight: 600, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
+                        <span className="of-delivery-item-name">
                           {delivery.productName}
                         </span>
                       </div>
-                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                      <span className="of-delivery-sub-info">
                         {delivery.pickup.city} → {delivery.destination.city} • Partner:{' '}
-                        <strong>
+                        <strong style={{ color: 'var(--color-text-primary)' }}>
                           {delivery.selectedProvider?.name
                             ? delivery.selectedProvider.name
                             : delivery.status === 'opportunity_sent'
@@ -323,9 +251,9 @@ export const VendorDashboardPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)' }}>
+                  <div className="of-delivery-status-col">
                     <div style={{ textAlign: 'right' }}>
-                      <p style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', margin: 0 }}>
+                      <p className="of-delivery-price" style={{ margin: 0 }}>
                         ₦{delivery.estimatedPrice.toLocaleString()}
                       </p>
                       <Badge
@@ -340,12 +268,13 @@ export const VendorDashboardPage: React.FC = () => {
                             ? 'warning'
                             : 'neutral'
                         }
+                        size="sm"
                       >
                         {humanizeStatus(delivery.status)}
                       </Badge>
                     </div>
 
-                    <ChevronRight size={18} color="var(--color-text-tertiary)" />
+                    <ChevronRight size={16} color="var(--color-text-muted)" />
                   </div>
                 </div>
               ))}
@@ -353,34 +282,34 @@ export const VendorDashboardPage: React.FC = () => {
           )}
         </div>
 
-        {/* Profile Card */}
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+        {/* Business Profile Side Panel */}
+        <div className="of-panel" style={{ height: 'fit-content' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Building size={18} color="var(--color-brand-accent)" />
             Business Profile
           </h2>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
             <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+              <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                 Business Name
               </span>
               <p style={{ fontWeight: 600, color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {profile?.businessName || 'Apex Fashion Hub'}
+                {profile?.businessName || user?.fullName || 'Commercial Vendor'}
               </p>
             </div>
 
             <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+              <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                 Category
               </span>
               <p style={{ color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {profile?.businessCategory || 'Fashion & Apparel'}
+                {profile?.businessCategory || 'Commerce & Goods'}
               </p>
             </div>
 
             <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+              <span style={{ color: 'var(--color-text-muted)', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
                 Operating City
               </span>
               <p style={{ color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>

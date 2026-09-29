@@ -1,18 +1,20 @@
-/* Reusable Button Styles */
+/* OrderFlow Refined Button Component */
 .of-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-family-sans);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.01em;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+  transition: all var(--transition-fast);
   user-select: none;
   text-decoration: none;
-  gap: var(--space-2);
+  gap: 8px;
+  position: relative;
 }
 
 .of-btn:focus-visible {
@@ -20,48 +22,58 @@
   outline-offset: 2px;
 }
 
+.of-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 /* Button Sizes */
 .of-btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: var(--font-size-xs);
-  height: 32px;
+  padding: 0 14px;
+  font-size: 0.8125rem; /* 13px */
+  height: 36px;
+  border-radius: 6px;
 }
 
 .of-btn-md {
-  padding: 0.5rem 1rem;
-  font-size: var(--font-size-sm);
-  height: 40px;
+  padding: 0 18px;
+  font-size: 0.875rem; /* 14px */
+  height: 42px;
+  border-radius: 8px;
 }
 
 .of-btn-lg {
-  padding: 0.75rem 1.25rem;
-  font-size: var(--font-size-base);
+  padding: 0 24px;
+  font-size: 0.9375rem; /* 15px */
   height: 48px;
+  border-radius: 8px;
 }
 
 /* Button Variants */
+/* Primary Action - Confident Dark Slate or Blue Accent */
 .of-btn-primary {
   background-color: var(--color-brand-primary);
-  color: var(--color-text-on-dark);
+  color: #FFFFFF;
   border-color: var(--color-brand-primary);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.08);
 }
 
 .of-btn-primary:hover:not(:disabled) {
   background-color: var(--color-brand-primary-hover);
   border-color: var(--color-brand-primary-hover);
+  box-shadow: 0 2px 4px 0 rgba(15, 23, 42, 0.12);
 }
 
 .of-btn-secondary {
   background-color: var(--color-brand-accent);
-  color: var(--color-text-on-dark);
+  color: #FFFFFF;
   border-color: var(--color-brand-accent);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px 0 rgba(37, 99, 235, 0.15);
 }
 
 .of-btn-secondary:hover:not(:disabled) {
   background-color: var(--color-brand-accent-hover);
   border-color: var(--color-brand-accent-hover);
+  box-shadow: 0 2px 4px 0 rgba(37, 99, 235, 0.2);
 }
 
 .of-btn-outline {
@@ -72,8 +84,9 @@
 }
 
 .of-btn-outline:hover:not(:disabled) {
-  background-color: var(--color-bg-subtle);
+  background-color: var(--color-bg-app);
   border-color: var(--color-border-strong);
+  color: var(--color-text-primary);
 }
 
 .of-btn-ghost {
@@ -87,19 +100,22 @@
 }
 
 .of-btn-destructive {
-  background-color: var(--color-status-error-text);
-  color: var(--color-text-on-dark);
+  background-color: #DC2626;
+  color: #FFFFFF;
+  border-color: #DC2626;
 }
 
 .of-btn-destructive:hover:not(:disabled) {
-  background-color: #7F1D1D;
+  background-color: #B91C1C;
+  border-color: #B91C1C;
 }
 
 /* Disabled & Loading States */
 .of-btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
   box-shadow: none;
+  transform: none;
 }
 
 .of-btn-icon-left,

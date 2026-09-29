@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Truck, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import { OrderFlowLogo } from '../ui/OrderFlowLogo';
 import './Footer.css';
 
 interface FooterProps {
@@ -37,12 +38,7 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Brand Info Column */}
           <div className="of-footer-brand">
             <Link to="/" className="of-logo" aria-label="OrderFlow Home">
-              <div className="of-logo-icon">
-                <Truck size={18} color="#FFFFFF" />
-              </div>
-              <span className="of-logo-text" style={{ color: '#FFFFFF' }}>
-                Order<span className="of-logo-accent">Flow</span>
-              </span>
+              <OrderFlowLogo size={28} variant="dark" showText={true} />
             </Link>
             <p className="of-footer-tagline">
               The logistics marketplace connecting commercial vendors directly with verified delivery providers. Efficient, transparent, and built for scale.

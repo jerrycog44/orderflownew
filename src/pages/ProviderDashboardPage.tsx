@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
 import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus, ProviderAvailability } from '../types';
+import './ProviderDashboardPage.css';
 
 export const ProviderDashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
@@ -135,7 +136,7 @@ export const ProviderDashboardPage: React.FC = () => {
   };
 
   return (
-    <div style={{ maxWidth: '1140px', margin: '0 auto', padding: 'var(--space-8) var(--space-4)' }}>
+    <div className="of-provider-dashboard">
       {/* Top Banner Header */}
       <div
         style={{
