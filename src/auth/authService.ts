@@ -207,18 +207,11 @@ class SupabaseAuthService implements IAuthService {
       return { session: null, error: { code: 'unknown', message: 'Signup failed. Please try again.' } };
     }
 
-    const { error: profileErr } = await fromTable('profiles').upsert({
-      id: data.user.id,
-      full_name: input.fullName.trim(),
-      email: input.email.toLowerCase().trim(),
-      phone: formattedPhone,
-      role: null,
-      onboarding_completed: false,
-    });
-
-    if (profileErr) {
-      console.error('Failed to create profiles record:', profileErr);
-    }
+    // Profile row is auto-created by the handle_new_user() database trigger.
+    // We update phone here in case the trigger stored a partial value from metadata.
+    await fromTable('profiles')
+      .update({ phone: formattedPhone, full_name: input.fullName.trim() })
+      .eq('id', data.user.id);
 
     const user: User = {
       id: data.user.id,
@@ -306,15 +299,22 @@ class SupabaseAuthService implements IAuthService {
   }
 
   async setRole(input: UpdateRoleInput): Promise<{ user: User | null; error: AuthError | null }> {
-    const { error } = await fromTable('profiles')
-      .update({ role: input.role })
-      .eq('id', input.userId);
+    // Use upsert as safety net: if trigger somehow missed creating the profile row,
+    // this ensures it exists before vendor/provider tables FK-reference it.
+    const session = this.getSession();
+    const { error } = await fromTable('profiles').upsert({
+      id: input.userId,
+      role: input.role,
+      full_name: session?.user.fullName || 'User',
+      email: session?.user.email || '',
+      phone: session?.user.phone || null,
+      onboarding_completed: false,
+    });
 
     if (error) {
       return { user: null, error: { code: 'unknown', message: error.message } };
     }
 
-    const session = this.getSession();
     if (session && session.user.id === input.userId) {
       const updatedUser: User = { ...session.user, role: input.role, updatedAt: now() };
       const updatedSession: AuthSession = { ...session, user: updatedUser };
