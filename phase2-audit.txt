@@ -1,0 +1,294 @@
+=== GIT STATUS ===
+ M .gitignore
+ M src/types/database.types.ts
+?? .phase2-backup/
+?? phase2-audit.txt
+?? src/services/supabaseDeliveryService.ts
+?? supabase/migrations/002_phase2_delivery_engine.sql
+=== MIGRATION ===
+-- OrderFlow Phase 2: atomic delivery and package creation.
+-- Review this migration before applying it to any Supabase project.
+
+CREATE OR REPLACE FUNCTION public.create_delivery_with_package(
+  p_dispatch_mode text,
+  p_pickup_address text,
+  p_pickup_city text,
+  p_pickup_contact_name text,
+  p_pickup_contact_phone text,
+  p_destination_address text,
+  p_destination_city text,
+  p_recipient_name text,
+  p_recipient_phone text,
+  p_delivery_notes text,
+  p_estimated_price numeric,
+  p_estimated_delivery_time text,
+  p_product_name text,
+  p_item_category text,
+  p_package_type text,
+  p_quantity integer,
+  p_weight_kg numeric,
+  p_length_cm numeric,
+  p_width_cm numeric,
+  p_height_cm numeric,
+  p_is_fragile boolean,
+  p_image_url text,
+  p_special_instructions text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public
+AS $function$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_delivery_id uuid;
+  v_tracking_code text;
+  v_attempt integer := 0;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Authentication required';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.vendors WHERE id = v_user_id
+  ) THEN
+    RAISE EXCEPTION 'A registered vendor account is required';
+  END IF;
+
+  IF p_dispatch_mode NOT IN ('auto', 'manual') THEN
+    RAISE EXCEPTION 'Invalid dispatch mode';
+  END IF;
+
+  IF p_package_type NOT IN ('parcel', 'box', 'bag', 'fragile_item', 'other') THEN
+    RAISE EXCEPTION 'Invalid package type';
+  END IF;
+
+  IF COALESCE(p_estimated_price, -1) < 0
+     OR COALESCE(p_quantity, 0) < 1
+     OR COALESCE(p_weight_kg, 0) <= 0 THEN
+    RAISE EXCEPTION 'Invalid price or package details';
+  END IF;
+
+  -- Use a long random tracking suffix and retry on the extremely unlikely collision.
+  LOOP
+    v_tracking_code :=
+      'OF-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 10));
+    EXIT WHEN NOT EXISTS (
+      SELECT 1 FROM public.deliveries WHERE tracking_code = v_tracking_code
+    );
+    v_attempt := v_attempt + 1;
+    IF v_attempt >= 5 THEN
+      RAISE EXCEPTION 'Could not generate a unique tracking code';
+    END IF;
+  END LOOP;
+
+  INSERT INTO public.deliveries (
+    tracking_code, vendor_id, status, dispatch_mode,
+    pickup_address, pickup_city, pickup_contact_name, pickup_contact_phone,
+    destination_address, destination_city, recipient_name, recipient_phone,
+    delivery_notes, estimated_price, estimated_delivery_time
+  )
+  VALUES (
+    v_tracking_code, v_user_id, 'searching',
+    p_dispatch_mode::public.dispatch_mode_enum,
+    p_pickup_address, p_pickup_city,
+    NULLIF(p_pickup_contact_name, ''), NULLIF(p_pickup_contact_phone, ''),
+    p_destination_address, p_destination_city, p_recipient_name, p_recipient_phone,
+    NULLIF(p_delivery_notes, ''), p_estimated_price, p_estimated_delivery_time
+  )
+  RETURNING id INTO v_delivery_id;
+
+  INSERT INTO public.package_details (
+    delivery_id, product_name, item_category, package_type, quantity,
+    weight_kg, length_cm, width_cm, height_cm, is_fragile,
+    image_url, special_instructions
+  )
+  VALUES (
+    v_delivery_id, p_product_name, p_item_category,
+    p_package_type::public.package_type_enum, p_quantity, p_weight_kg,
+    p_length_cm, p_width_cm, p_height_cm, COALESCE(p_is_fragile, false),
+    NULLIF(p_image_url, ''), NULLIF(p_special_instructions, '')
+  );
+
+  INSERT INTO public.delivery_status_history (
+    delivery_id, previous_status, new_status, changed_by_user_id, notes
+  )
+  VALUES (
+    v_delivery_id, NULL, 'searching', v_user_id, 'Delivery created'
+  );
+
+  RETURN jsonb_build_object(
+    'id', v_delivery_id,
+    'tracking_code', v_tracking_code,
+    'status', 'searching'
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.create_delivery_with_package(
+  text, text, text, text, text, text, text, text, text, text,
+  numeric, text, text, text, text, integer, numeric, numeric,
+  numeric, numeric, boolean, text, text
+) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.create_delivery_with_package(
+  text, text, text, text, text, text, text, text, text, text,
+  numeric, text, text, text, text, integer, numeric, numeric,
+  numeric, numeric, boolean, text, text
+) TO authenticated;
+
+DROP POLICY IF EXISTS
+  "Users can record status history for their deliveries"
+  ON public.delivery_status_history;
+
+CREATE POLICY "Users can record status history for their deliveries"
+ON public.delivery_status_history
+FOR INSERT TO authenticated
+WITH CHECK (
+  changed_by_user_id = auth.uid()
+  AND EXISTS (
+    SELECT 1 FROM public.deliveries d
+    WHERE d.id = delivery_status_history.delivery_id
+      AND d.vendor_id = auth.uid()
+  )
+);
+=== SUPABASE SERVICE ===
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import type { DeliveryRecord } from '../types';
+
+export type PublicTrackingRecord = {
+  tracking_code: string;
+  status: DeliveryRecord['status'];
+  estimated_delivery_time: string | null;
+  created_at: string;
+  updated_at: string;
+  product_name: string;
+  vendor_name: string;
+  provider_name: string | null;
+  provider_logo_url: string | null;
+};
+
+export const supabaseDeliveryService = {
+  async createDelivery(data: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'>) {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured. Delivery was not saved.');
+    }
+
+    const p = data.package;
+    const { data: result, error } = await (supabase as any).rpc('create_delivery_with_package', {
+      p_dispatch_mode: data.dispatchMode || 'auto',
+      p_pickup_address: data.pickup.address,
+      p_pickup_city: data.pickup.city,
+      p_pickup_contact_name: data.pickup.contactName || '',
+      p_pickup_contact_phone: data.pickup.contactPhone || '',
+      p_destination_address: data.destination.address,
+      p_destination_city: data.destination.city,
+      p_recipient_name: data.recipient.name,
+      p_recipient_phone: data.recipient.phone,
+      p_delivery_notes: data.deliveryNote || '',
+      p_estimated_price: data.estimatedPrice,
+      p_estimated_delivery_time: data.estimatedDeliveryTime || 'To be confirmed',
+      p_product_name: p.productName,
+      p_item_category: p.itemCategory,
+      p_package_type: p.packageType,
+      p_quantity: p.quantity,
+      p_weight_kg: p.weightKg,
+      p_length_cm: p.dimensionsCm.length,
+      p_width_cm: p.dimensionsCm.width,
+      p_height_cm: p.dimensionsCm.height,
+      p_is_fragile: p.fragile,
+      p_image_url: p.imageUrl || '',
+      p_special_instructions: p.notes || '',
+    });
+
+    if (error) throw new Error(error.message);
+    if (!result || typeof result !== 'object' || !('id' in result) || !('tracking_code' in result)) {
+      throw new Error('Supabase returned an unexpected delivery response.');
+    }
+
+    return {
+      id: String(result.id),
+      trackingCode: String(result.tracking_code),
+      status: String(result.status),
+    };
+  },
+
+  async getVendorDeliveries(vendorId: string) {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured.');
+    }
+
+    const { data, error } = await supabase
+      .from('deliveries')
+      .select('*, package_details(*)')
+      .eq('vendor_id', vendorId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  },
+
+  async getPublicTracking(code: string): Promise<PublicTrackingRecord | null> {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured.');
+    }
+
+    const { data, error } = await (supabase as any).rpc('get_public_tracking', {
+      p_tracking_code: code.trim(),
+    });
+
+    if (error) throw new Error(error.message);
+    return (data?.[0] as PublicTrackingRecord | undefined) ?? null;
+  },
+};
+=== DELIVERY SERVICE FUNCTIONS ===
+27:  getVendorDeliveries(vendorId: string): DeliveryRecord[] {
+43:  createDelivery(data: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'>): DeliveryRecord {
+53:    let initialStatus = data.status || 'created';
+56:    if (data.dispatchMode === 'auto' || !data.providerId) {
+75:      status: initialStatus,
+93:   * Retrieves delivery opportunities matching a provider's coverage area or general marketplace pool.
+98:      const isAvailableStatus = d.status === 'created' || d.status === 'searching' || d.status === 'awaiting_pickup';
+110:   * Retrieves deliveries assigned to or accepted by a specific provider.
+112:  getProviderAssignedDeliveries(providerId: string): DeliveryRecord[] {
+114:    return all.filter((d) => d.providerId === providerId || d.selectedProvider?.id === providerId);
+118:   * Updates the status of a specific delivery record.
+120:  updateDeliveryStatus(id: string, status: DeliveryRecord['status']): DeliveryRecord | null {
+127:      status,
+142:   * Accepts a delivery on behalf of a logistics provider.
+143:   * Prevents double-assignment if already accepted by another provider or completed.
+145:  acceptDelivery(id: string, providerId: string, providerName: string): DeliveryRecord | null {
+151:    // Guard against double assignment or invalid status
+153:      target.status === 'provider_selected' ||
+154:      target.status === 'awaiting_pickup' ||
+155:      target.status === 'picked_up' ||
+156:      target.status === 'in_transit' ||
+157:      target.status === 'delivered' ||
+158:      target.status === 'cancelled'
+165:      status: 'provider_selected',
+166:      providerId: providerId,
+168:        ? { ...target.selectedProvider, id: providerId, name: providerName }
+170:            id: providerId,
+171:            name: providerName,
+197:   * Retrieves a targeted delivery opportunity specifically assigned to a provider.
+198:   * Respects dynamic provider availability status (suppresses if provider is busy or offline).
+200:  getProviderTargetedOpportunity(providerId: string): DeliveryRecord | null {
+201:    const dynamicAvail = logisticsService.getDynamicAvailability(providerId);
+210:          d.status === 'opportunity_sent' &&
+211:          (d.currentOpportunityProviderId === providerId || (!d.currentOpportunityProviderId && providerId === 'prov_swifthaul'))
+217:   * Declines a targeted delivery opportunity and advances the candidate queue to the next eligible provider.
+219:  declineOpportunity(id: string, providerId: string): DeliveryRecord | null {
+225:    const declined = [...(target.declinedProviderIds || []), providerId];
+235:        status: 'opportunity_sent',
+244:        status: 'searching',
+264:  getDeliveryByTrackingCode(code: string): DeliveryRecord | null {
+=== UI CALL SITES ===
+src/components/delivery/ConfirmationStep.tsx:36:  const handleConfirmDelivery = () => {
+src/components/delivery/ConfirmationStep.tsx:41:      const newDelivery = deliveryService.createDelivery({
+src/components/delivery/ConfirmationStep.tsx:328:          onClick={handleConfirmDelivery}
+src/pages/VendorDashboardPage.tsx:36:      setDeliveries(deliveryService.getVendorDeliveries(user.id));
+src/pages/VendorDashboardPage.tsx:38:      setDeliveries(deliveryService.getVendorDeliveries('mock_vendor_1'));
+src/pages/CustomerTrackingPage.tsx:43:    return trackingCode ? deliveryService.getDeliveryByTrackingCode(trackingCode) : null;
+src/pages/CustomerTrackingPage.tsx:46:  const handleSearch = (e: React.FormEvent) => {
+src/pages/CustomerTrackingPage.tsx:49:    const found = deliveryService.getDeliveryByTrackingCode(searchInput.trim());
+src/pages/CustomerTrackingPage.tsx:75:        <form onSubmit={handleSearch} className="tracking-search-bar">
