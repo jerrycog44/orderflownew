@@ -139,6 +139,34 @@ export interface Database {
       };
     };
     Functions: {
+      create_delivery_with_package: {
+        Args: {
+          p_dispatch_mode: string;
+          p_pickup_address: string;
+          p_pickup_city: string;
+          p_pickup_contact_name: string;
+          p_pickup_contact_phone: string;
+          p_destination_address: string;
+          p_destination_city: string;
+          p_recipient_name: string;
+          p_recipient_phone: string;
+          p_delivery_notes: string;
+          p_estimated_price: number;
+          p_estimated_delivery_time: string;
+          p_product_name: string;
+          p_item_category: string;
+          p_package_type: string;
+          p_quantity: number;
+          p_weight_kg: number;
+          p_length_cm: number;
+          p_width_cm: number;
+          p_height_cm: number;
+          p_is_fragile: boolean;
+          p_image_url: string;
+          p_special_instructions: string;
+        };
+        Returns: Json;
+      };
       get_public_tracking: {
         Args: { p_tracking_code: string };
         Returns: Database['public']['Views']['public_tracking_view']['Row'][];
