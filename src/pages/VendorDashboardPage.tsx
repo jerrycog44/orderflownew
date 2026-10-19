@@ -250,7 +250,7 @@ export const VendorDashboardPage: React.FC = () => {
                     <div className="of-delivery-info">
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '12px', color: 'var(--color-brand-accent)' }}>
-                          {delivery.id}
+                          {delivery.trackingCode || delivery.id}
                         </span>
                         <span className="of-delivery-item-name">
                           {delivery.productName}

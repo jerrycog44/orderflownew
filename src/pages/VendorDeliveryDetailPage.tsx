@@ -119,7 +119,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)', flexWrap: 'wrap' }}>
             <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, fontFamily: 'monospace', color: 'var(--color-text-primary)', margin: 0 }}>
-              {delivery.id}
+              {delivery.trackingCode || delivery.id}
             </h1>
             <Badge
               variant={

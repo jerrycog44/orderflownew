@@ -149,4 +149,43 @@ describe('deliveryService', () => {
     expect(untyped.pickup_address).toBeUndefined();
     expect(untyped.estimatedPrice).toBeUndefined();
   });
+
+  it('handles deliveries with undefined/optional package dimensions safely', async () => {
+    const inputWithoutDims: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'> = {
+      ...sampleDeliveryInput,
+      package: {
+        ...sampleDeliveryInput.package,
+        dimensionsCm: undefined as any,
+      },
+    };
+
+    const created = await deliveryService.createDelivery(inputWithoutDims);
+    expect(created).toBeDefined();
+    expect(created.id).toBeDefined();
+  });
+
+  it('finds deliveries by tracking code or ID interchangeably', async () => {
+    const created = await deliveryService.createDelivery(sampleDeliveryInput);
+
+    const byId = await deliveryService.getDeliveryById(created.id);
+    expect(byId).not.toBeNull();
+    expect(byId?.id).toBe(created.id);
+
+    if (created.trackingCode) {
+      const byCode = await deliveryService.getDeliveryByTrackingCode(created.trackingCode);
+      expect(byCode).not.toBeNull();
+      expect(byCode?.id).toBe(created.id);
+    }
+  });
+
+  it('updates delivery status and returns updated record', async () => {
+    const created = await deliveryService.createDelivery(sampleDeliveryInput);
+
+    const updated = await deliveryService.updateDeliveryStatus(created.id, 'in_transit');
+    expect(updated).not.toBeNull();
+    expect(updated?.status).toBe('in_transit');
+
+    const fetched = await deliveryService.getDeliveryById(created.id);
+    expect(fetched?.status).toBe('in_transit');
+  });
 });

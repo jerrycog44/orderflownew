@@ -10,6 +10,9 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 const STORAGE_KEY = 'of_dev_deliveries';
 
+const isUuid = (val: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+
 /**
  * Maps database delivery row with joined relationships into domain `DeliveryRecord`.
  */
@@ -148,7 +151,7 @@ export const deliveryService = {
   async getDeliveryById(id: string): Promise<DeliveryRecord | null> {
     if (isSupabaseConfigured) {
       try {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        const targetIsUuid = isUuid(id);
         let query = supabase
           .from('deliveries')
           .select(`
@@ -158,7 +161,7 @@ export const deliveryService = {
             vendors (business_name)
           `);
 
-        if (isUuid) {
+        if (targetIsUuid) {
           query = query.eq('id', id);
         } else {
           query = query.ilike('tracking_code', id.trim());
@@ -242,9 +245,9 @@ export const deliveryService = {
           package_type: data.package.packageType,
           quantity: data.package.quantity,
           weight_kg: data.package.weightKg,
-          length_cm: data.package.dimensionsCm.length,
-          width_cm: data.package.dimensionsCm.width,
-          height_cm: data.package.dimensionsCm.height,
+          length_cm: data.package.dimensionsCm?.length ?? null,
+          width_cm: data.package.dimensionsCm?.width ?? null,
+          height_cm: data.package.dimensionsCm?.height ?? null,
           is_fragile: data.package.fragile,
           image_url: data.package.imageUrl || null,
           special_instructions: data.package.notes || null,
@@ -295,7 +298,7 @@ export const deliveryService = {
           delivery_id: insertedDelivery.id,
           previous_status: null,
           new_status: initialStatus,
-          changed_by_user_id: data.vendorId,
+          changed_by_user_id: isUuid(data.vendorId) ? data.vendorId : null,
           notes: 'Delivery order created',
         });
 
@@ -488,7 +491,7 @@ export const deliveryService = {
     providerId: string,
     providerName: string
   ): Promise<DeliveryRecord | null> {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && isUuid(deliveryId) && isUuid(providerId)) {
       try {
         const { data, error } = await supabase.rpc('accept_delivery_opportunity', {
           p_delivery_id: deliveryId,
@@ -565,7 +568,7 @@ export const deliveryService = {
    * Declines a delivery opportunity and triggers automated queue advancement via RPC.
    */
   async declineOpportunity(deliveryId: string, providerId: string): Promise<boolean> {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && isUuid(deliveryId) && isUuid(providerId)) {
       try {
         const { data, error } = await supabase.rpc('decline_delivery_opportunity', {
           p_delivery_id: deliveryId,
@@ -633,7 +636,7 @@ export const deliveryService = {
     userId?: string,
     notes?: string
   ): Promise<DeliveryRecord | null> {
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && isUuid(deliveryId)) {
       try {
         const { error } = await supabase
           .from('deliveries')
@@ -648,14 +651,16 @@ export const deliveryService = {
           return null;
         }
 
-        // Audit log in status history
-        await supabase.from('delivery_status_history').insert({
-          delivery_id: deliveryId,
-          previous_status: null,
-          new_status: status,
-          changed_by_user_id: userId || null,
-          notes: notes || `Status updated to ${status}`,
-        });
+        // Audit log in status history if user is valid UUID
+        if (userId && isUuid(userId)) {
+          await supabase.from('delivery_status_history').insert({
+            delivery_id: deliveryId,
+            previous_status: null,
+            new_status: status,
+            changed_by_user_id: userId,
+            notes: notes || `Status updated to ${status}`,
+          });
+        }
 
         return await this.getDeliveryById(deliveryId);
       } catch (err) {

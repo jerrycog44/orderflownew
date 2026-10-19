@@ -246,11 +246,14 @@ export const CreateDeliveryPage: React.FC = () => {
                   selectedProvider={selectedProvider}
                   onSelectProvider={(p) => setSelectedProvider(p)}
                   onBack={() => setShowManualSelection(false)}
-                  onNext={() => {}}
+                  onNext={() => {
+                    const confirmEl = document.getElementById('manual-confirmation-section');
+                    confirmEl?.scrollIntoView({ behavior: 'smooth' });
+                  }}
                 />
 
                 {selectedProvider && (
-                  <div style={{ marginTop: 'var(--space-6)' }}>
+                  <div id="manual-confirmation-section" style={{ marginTop: 'var(--space-6)' }}>
                     <ConfirmationStep
                       packageData={packageData}
                       pickup={pickup}

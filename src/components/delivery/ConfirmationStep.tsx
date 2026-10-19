@@ -124,7 +124,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               Delivery ID
             </span>
             <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--color-brand-accent)', fontSize: 'var(--font-size-base)' }}>
-              {createdDelivery.id}
+              {createdDelivery.trackingCode || createdDelivery.id}
             </span>
           </div>
 

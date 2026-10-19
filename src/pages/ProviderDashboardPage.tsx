@@ -279,7 +279,7 @@ export const ProviderDashboardPage: React.FC = () => {
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
               <Badge variant="brand">NEW TARGETED DISPATCH OPPORTUNITY</Badge>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                {targetedOpportunity.id}
+                {targetedOpportunity.trackingCode || targetedOpportunity.id}
               </span>
             </div>
 
@@ -486,7 +486,7 @@ export const ProviderDashboardPage: React.FC = () => {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
                             <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                              {opp.id}
+                              {opp.trackingCode || opp.id}
                             </span>
                             <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
                               {opp.productName}
@@ -584,7 +584,7 @@ export const ProviderDashboardPage: React.FC = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                            {job.id}
+                            {job.trackingCode || job.id}
                           </span>
                           <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
                             {job.productName}
@@ -710,7 +710,7 @@ export const ProviderDashboardPage: React.FC = () => {
       <Modal
         isOpen={!!selectedJob}
         onClose={() => setSelectedJob(null)}
-        title={`Delivery Details (${selectedJob?.id})`}
+        title={`Delivery Details (${selectedJob?.trackingCode || selectedJob?.id})`}
         maxWidth="lg"
       >
         {selectedJob && (
