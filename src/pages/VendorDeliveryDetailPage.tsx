@@ -20,33 +20,74 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(id));
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-
     if (id) {
-      deliveryService.getDeliveryById(id).then((record) => {
-        if (isMounted) {
-          setDelivery(record);
-          setIsLoading(false);
-        }
-      }).catch((err) => {
-        console.error('Failed to load delivery by id:', err);
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
+      deliveryService
+        .getDeliveryById(id)
+        .then((record) => {
+          if (isMounted) setDelivery(record);
+        })
+        .catch((err) => {
+          console.error('Failed to load delivery by id:', err);
+          if (isMounted) {
+            setLoadError(err instanceof Error ? err.message : 'Database query error');
+          }
+        })
+        .finally(() => {
+          if (isMounted) setIsLoading(false);
+        });
     }
-
     return () => {
       isMounted = false;
     };
   }, [id]);
 
+  const handleRetry = () => {
+    if (!id) return;
+    setIsLoading(true);
+    setLoadError(null);
+    deliveryService
+      .getDeliveryById(id)
+      .then((record) => {
+        setDelivery(record);
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : 'Database query error');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
+
   if (isLoading) {
     return (
       <div style={{ maxWidth: '800px', margin: 'var(--space-12) auto', textAlign: 'center' }}>
         <p style={{ color: 'var(--color-text-secondary)' }}>Loading delivery details...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ maxWidth: '600px', margin: 'var(--space-12) auto', textAlign: 'center' }}>
+        <AlertCircle size={48} color="#DC2626" style={{ marginBottom: 'var(--space-3)' }} />
+        <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+          Failed to Load Delivery
+        </h2>
+        <p style={{ color: 'var(--color-text-secondary)', marginBottom: 'var(--space-6)' }}>
+          {loadError}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 'var(--space-3)' }}>
+          <Button variant="outline" onClick={handleRetry}>
+            Retry
+          </Button>
+          <Button variant="primary" onClick={() => navigate('/vendor/dashboard')}>
+            Back to Vendor Dashboard
+          </Button>
+        </div>
       </div>
     );
   }

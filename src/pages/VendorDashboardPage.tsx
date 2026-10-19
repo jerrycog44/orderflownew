@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search } from 'lucide-react';
+import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { logisticsService } from '../services/logisticsService';
@@ -16,15 +16,18 @@ export const VendorDashboardPage: React.FC = () => {
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadVendorData() {
+    async function loadData() {
       if (!user?.id) {
         setIsLoading(false);
         return;
       }
+
+      setLoadError(null);
 
       try {
         const [prof, userDeliveries] = await Promise.all([
@@ -38,6 +41,9 @@ export const VendorDashboardPage: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to load vendor dashboard data:', err);
+        if (isMounted) {
+          setLoadError(err instanceof Error ? err.message : 'Failed to connect to deliveries database.');
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -45,12 +51,33 @@ export const VendorDashboardPage: React.FC = () => {
       }
     }
 
-    loadVendorData();
+    loadData();
 
     return () => {
       isMounted = false;
     };
-  }, [user?.id]);
+  }, [user]);
+
+  const handleRetry = () => {
+    if (!user?.id) return;
+    setIsLoading(true);
+    setLoadError(null);
+
+    Promise.all([
+      logisticsService.getVendorProfile(user.id),
+      deliveryService.getVendorDeliveries(user.id),
+    ])
+      .then(([prof, userDeliveries]) => {
+        setProfile(prof);
+        setDeliveries(userDeliveries);
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : 'Failed to connect to deliveries database.');
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'in_transit' | 'delivered'>('all');
@@ -128,6 +155,33 @@ export const VendorDashboardPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {loadError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-4)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            color: '#DC2626',
+            fontSize: 'var(--font-size-sm)',
+            marginBottom: 'var(--space-4)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <AlertCircle size={18} />
+            <span>{loadError}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleRetry} disabled={isLoading}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="of-metrics-grid">

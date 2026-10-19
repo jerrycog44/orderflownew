@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, MapPin, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Package, MapPin, CheckCircle, ArrowLeft, AlertCircle } from 'lucide-react';
 import type { PackageDetails, LocationPoint, LogisticsProvider, DeliveryRecord } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { deliveryService } from '../../services/deliveryService';
@@ -32,9 +32,11 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdDelivery, setCreatedDelivery] = useState<DeliveryRecord | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleConfirmDelivery = async () => {
     setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
       const isAuto = dispatchMode === 'auto' || !selectedProvider;
@@ -58,6 +60,8 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       setCreatedDelivery(newDelivery);
     } catch (err) {
       console.error('Failed to create delivery:', err);
+      const message = err instanceof Error ? err.message : 'Failed to create delivery request. Please try again.';
+      setSubmitError(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -315,6 +319,39 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
           </div>
         </div>
       </div>
+
+      {submitError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-4)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            color: '#DC2626',
+            fontSize: 'var(--font-size-sm)',
+          }}
+        >
+          <AlertCircle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div style={{ flex: 1 }}>
+            <strong>Unable to Create Delivery</strong>
+            <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+              {submitError}
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleConfirmDelivery}
+            disabled={isSubmitting}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
         <Button variant="outline" size="lg" onClick={onBack} leftIcon={<ArrowLeft size={18} />}>

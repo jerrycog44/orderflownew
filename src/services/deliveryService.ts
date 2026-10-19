@@ -17,9 +17,10 @@ const isUuid = (val: string): boolean =>
  * Maps database delivery row with joined relationships into domain `DeliveryRecord`.
  */
 function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
-  const pkg = Array.isArray(row.package_details)
-    ? row.package_details[0]
-    : row.package_details || {};
+  const pkg =
+    (Array.isArray(row.package_details)
+      ? row.package_details[0]
+      : row.package_details) || {};
   const provider = row.logistics_providers;
   const vendorName = row.vendors?.business_name || 'Commercial Vendor';
 
@@ -129,14 +130,14 @@ export const deliveryService = {
           .eq('vendor_id', vendorId)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          return data.map(mapDatabaseRowToDelivery);
-        }
         if (error) {
-          console.warn('deliveryService.getVendorDeliveries error:', error);
+          console.error('deliveryService.getVendorDeliveries error:', error);
+          throw new Error(error.message || 'Failed to fetch vendor deliveries');
         }
+        return (data || []).map(mapDatabaseRowToDelivery);
       } catch (err) {
-        console.warn('deliveryService.getVendorDeliveries exception, using fallback:', err);
+        console.error('deliveryService.getVendorDeliveries exception:', err);
+        throw err;
       }
     }
 
@@ -168,11 +169,14 @@ export const deliveryService = {
         }
 
         const { data, error } = await query.maybeSingle();
-        if (!error && data) {
-          return mapDatabaseRowToDelivery(data);
+        if (error) {
+          console.error('deliveryService.getDeliveryById error:', error);
+          return null;
         }
+        return data ? mapDatabaseRowToDelivery(data) : null;
       } catch (err) {
-        console.warn('deliveryService.getDeliveryById exception, using fallback:', err);
+        console.error('deliveryService.getDeliveryById exception:', err);
+        return null;
       }
     }
 
@@ -190,15 +194,14 @@ export const deliveryService = {
 
   /**
    * Creates a new delivery record.
-   * When Supabase is configured:
-   *  1. Inserts order into `deliveries` table.
-   *  2. Inserts item specs into `package_details` table.
-   *  3. If dispatchMode is auto, calculates candidate providers and seeds `dispatch_opportunities`.
-   *  4. Records initial state in `delivery_status_history`.
-   * Falls back to localStorage in offline/demo mode.
+   * In live mode (isSupabaseConfigured = true), invokes the atomic
+   * `create_delivery_transactional` database RPC in a single PostgreSQL transaction.
+   * If any error occurs, throws an explicit exception rather than masking with mock data.
+   * In offline/demo mode, persists to localStorage.
    */
   async createDelivery(
-    data: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'>
+    data: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'>,
+    idempotencyKey?: string
   ): Promise<DeliveryRecord> {
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const trackingCode = `OF-${randomNum}`;
@@ -208,114 +211,66 @@ export const deliveryService = {
     let initialStatus: DeliveryStatus = data.status || (isAuto ? 'opportunity_sent' : 'awaiting_pickup');
 
     if (isSupabaseConfigured) {
-      try {
-        // 1. Insert delivery master record
-        const { data: insertedDelivery, error: delError } = await supabase
-          .from('deliveries')
-          .insert({
-            tracking_code: trackingCode,
-            vendor_id: data.vendorId,
-            provider_id: isAuto ? null : data.providerId || null,
-            status: initialStatus,
-            dispatch_mode: isAuto ? 'auto' : 'manual',
-            pickup_address: data.pickup.address,
-            pickup_city: data.pickup.city,
-            pickup_contact_name: data.pickup.contactName || null,
-            pickup_contact_phone: data.pickup.contactPhone || null,
-            destination_address: data.destination.address,
-            destination_city: data.destination.city,
-            recipient_name: data.recipient.name,
-            recipient_phone: data.recipient.phone,
-            delivery_notes: data.deliveryNote || null,
-            estimated_price: data.estimatedPrice,
-            estimated_delivery_time: data.estimatedDeliveryTime || 'Same Day',
-          })
-          .select()
-          .single();
-
-        if (delError || !insertedDelivery) {
-          throw new Error(delError?.message || 'Failed to insert delivery row');
-        }
-
-        // 2. Insert package details child record
-        const { error: pkgError } = await supabase.from('package_details').insert({
-          delivery_id: insertedDelivery.id,
-          product_name: data.productName,
-          item_category: data.package.itemCategory,
-          package_type: data.package.packageType,
-          quantity: data.package.quantity,
-          weight_kg: data.package.weightKg,
-          length_cm: data.package.dimensionsCm?.length ?? null,
-          width_cm: data.package.dimensionsCm?.width ?? null,
-          height_cm: data.package.dimensionsCm?.height ?? null,
-          is_fragile: data.package.fragile,
-          image_url: data.package.imageUrl || null,
-          special_instructions: data.package.notes || null,
-        });
-
-        if (pkgError) {
-          console.error('deliveryService.createDelivery: package_details error:', pkgError);
-        }
-
-        // 3. Automated dispatch queue generation if auto mode
-        let candidateQueue: string[] = [];
-        let currentOpportunityProviderId: string | undefined = undefined;
-
-        if (isAuto) {
+      let candidateIds: string[] = [];
+      if (isAuto) {
+        try {
           const candidates = await logisticsService.getCandidateQueue({
             package: data.package,
             pickup: data.pickup,
             destination: data.destination,
           });
-
-          candidateQueue = candidates.map((c) => c.id);
-
-          if (candidateQueue.length > 0) {
-            currentOpportunityProviderId = candidateQueue[0];
-            initialStatus = 'opportunity_sent';
-
-            // Insert candidate opportunities
-            const oppsToInsert = candidates.map((cand, idx) => ({
-              delivery_id: insertedDelivery.id,
-              provider_id: cand.id,
-              rank_order: idx + 1,
-              status: idx === 0 ? ('sent' as const) : ('queued' as const),
-              sent_at: idx === 0 ? new Date().toISOString() : null,
-            }));
-
-            await supabase.from('dispatch_opportunities').insert(oppsToInsert);
-          } else {
-            initialStatus = 'searching';
-            await supabase
-              .from('deliveries')
-              .update({ status: 'searching' })
-              .eq('id', insertedDelivery.id);
-          }
+          candidateIds = candidates.map((c) => c.id).filter(isUuid);
+        } catch (candErr) {
+          console.warn('Failed to calculate candidate queue:', candErr);
         }
-
-        // 4. Record status history audit
-        await supabase.from('delivery_status_history').insert({
-          delivery_id: insertedDelivery.id,
-          previous_status: null,
-          new_status: initialStatus,
-          changed_by_user_id: isUuid(data.vendorId) ? data.vendorId : null,
-          notes: 'Delivery order created',
-        });
-
-        // 5. Build and return created record
-        return {
-          ...data,
-          id: insertedDelivery.id,
-          trackingCode: trackingCode,
-          status: initialStatus,
-          candidateQueue,
-          currentOpportunityProviderId,
-          createdAt: insertedDelivery.created_at,
-          updatedAt: insertedDelivery.updated_at,
-        };
-      } catch (err) {
-        console.warn('deliveryService.createDelivery Supabase error, falling back to local:', err);
       }
+
+      const { data: res, error: rpcErr } = await supabase.rpc('create_delivery_transactional', {
+        p_pickup_address: data.pickup.address,
+        p_pickup_city: data.pickup.city,
+        p_destination_address: data.destination.address,
+        p_destination_city: data.destination.city,
+        p_recipient_name: data.recipient.name,
+        p_recipient_phone: data.recipient.phone,
+        p_estimated_price: data.estimatedPrice,
+        p_dispatch_mode: isAuto ? 'auto' : 'manual',
+        p_product_name: data.productName,
+        p_item_category: data.package.itemCategory,
+        p_package_type: data.package.packageType,
+        p_weight_kg: data.package.weightKg,
+        p_quantity: data.package.quantity,
+        p_length_cm: data.package.dimensionsCm?.length ?? null,
+        p_width_cm: data.package.dimensionsCm?.width ?? null,
+        p_height_cm: data.package.dimensionsCm?.height ?? null,
+        p_is_fragile: data.package.fragile,
+        p_image_url: data.package.imageUrl || null,
+        p_special_instructions: data.package.notes || null,
+        p_pickup_contact_name: data.pickup.contactName || null,
+        p_pickup_contact_phone: data.pickup.contactPhone || null,
+        p_delivery_notes: data.deliveryNote || null,
+        p_estimated_delivery_time: data.estimatedDeliveryTime || 'Same Day',
+        p_selected_provider_id: !isAuto && data.providerId && isUuid(data.providerId) ? data.providerId : null,
+        p_candidate_provider_ids: candidateIds.length > 0 ? candidateIds : null,
+        p_idempotency_key: idempotencyKey || null,
+      });
+
+      if (rpcErr || !res || !res.success) {
+        const errorMsg = rpcErr?.message || (res as { error?: string })?.error || 'Database rejected delivery creation';
+        console.error('deliveryService.createDelivery error:', errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      return {
+        ...data,
+        id: res.delivery_id,
+        trackingCode: res.tracking_code,
+        status: res.status as DeliveryStatus,
+        providerId: res.provider_id || undefined,
+        currentOpportunityProviderId: res.current_opportunity_provider_id || undefined,
+        candidateQueue: res.candidate_provider_ids,
+        createdAt: res.created_at,
+        updatedAt: res.updated_at,
+      };
     }
 
     // Offline / Demo fallback
@@ -361,33 +316,65 @@ export const deliveryService = {
 
   /**
    * Retrieves open delivery requests available for logistics providers in their coverage area.
+   * In live mode, invokes `get_marketplace_opportunities` RPC with PII redaction
+   * (hiding customer phone numbers and street addresses until acceptance).
    */
   async getProviderOpportunities(coverageArea?: string): Promise<DeliveryRecord[]> {
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase
-          .from('deliveries')
-          .select(`
-            *,
-            package_details (*),
-            logistics_providers (*),
-            vendors (business_name)
-          `)
-          .in('status', ['created', 'searching', 'opportunity_sent', 'awaiting_pickup'])
-          .order('created_at', { ascending: false });
+        const { data, error } = await supabase.rpc('get_marketplace_opportunities', {
+          p_coverage_area: coverageArea || null,
+        });
 
-        if (!error && data) {
-          const records = data.map(mapDatabaseRowToDelivery);
-          if (!coverageArea) return records;
-          const areaLower = coverageArea.toLowerCase();
-          return records.filter(
-            (d) =>
-              d.pickup.city.toLowerCase().includes(areaLower) ||
-              d.destination.city.toLowerCase().includes(areaLower)
-          );
+        if (error) {
+          console.error('deliveryService.getProviderOpportunities error:', error);
+          return [];
         }
+
+        if (data) {
+          return data.map((row) => ({
+            id: row.delivery_id,
+            trackingCode: row.tracking_code,
+            vendorId: 'vendor_marketplace',
+            vendorName: row.vendor_name,
+            productName: `${row.quantity}x ${row.item_category}`,
+            package: {
+              productName: `${row.quantity}x ${row.item_category}`,
+              itemCategory: row.item_category,
+              packageType: row.package_type,
+              quantity: row.quantity,
+              weightKg: row.weight_kg,
+              dimensionsCm: {
+                length: row.length_cm || 10,
+                width: row.width_cm || 10,
+                height: row.height_cm || 10,
+              },
+              fragile: row.is_fragile,
+            },
+            pickup: {
+              address: `${row.pickup_city} (Exact address revealed upon acceptance)`,
+              city: row.pickup_city,
+            },
+            destination: {
+              address: `${row.destination_city} (Exact address revealed upon acceptance)`,
+              city: row.destination_city,
+            },
+            recipient: {
+              name: 'Customer (Protected)',
+              phone: 'Hidden until accepted',
+            },
+            status: row.status as DeliveryStatus,
+            dispatchMode: row.dispatch_mode as 'auto' | 'manual',
+            estimatedPrice: row.estimated_price,
+            estimatedDeliveryTime: row.estimated_delivery_time || 'Same Day',
+            createdAt: row.created_at,
+            updatedAt: row.created_at,
+          }));
+        }
+        return [];
       } catch (err) {
-        console.warn('deliveryService.getProviderOpportunities error, using fallback:', err);
+        console.error('deliveryService.getProviderOpportunities exception:', err);
+        return [];
       }
     }
 
@@ -417,27 +404,62 @@ export const deliveryService = {
 
     if (isSupabaseConfigured) {
       try {
-        const { data: opps, error } = await supabase
-          .from('dispatch_opportunities')
-          .select(`
-            delivery_id,
-            deliveries (
-              *,
-              package_details (*),
-              logistics_providers (*),
-              vendors (business_name)
-            )
-          `)
-          .eq('provider_id', providerId)
-          .eq('status', 'sent')
-          .order('created_at', { ascending: false })
-          .limit(1);
+        const { data, error } = await supabase.rpc('get_marketplace_opportunities', {
+          p_coverage_area: null,
+        });
 
-        if (!error && opps && opps.length > 0 && opps[0].deliveries) {
-          return mapDatabaseRowToDelivery(opps[0].deliveries);
+        if (error) {
+          console.error('deliveryService.getProviderTargetedOpportunity error:', error);
+          return null;
         }
+
+        if (data) {
+          const targeted = data.find((row) => row.is_targeted_offer);
+          if (targeted) {
+            return {
+              id: targeted.delivery_id,
+              trackingCode: targeted.tracking_code,
+              vendorId: 'vendor_marketplace',
+              vendorName: targeted.vendor_name,
+              productName: `${targeted.quantity}x ${targeted.item_category}`,
+              package: {
+                productName: `${targeted.quantity}x ${targeted.item_category}`,
+                itemCategory: targeted.item_category,
+                packageType: targeted.package_type,
+                quantity: targeted.quantity,
+                weightKg: targeted.weight_kg,
+                dimensionsCm: {
+                  length: targeted.length_cm || 10,
+                  width: targeted.width_cm || 10,
+                  height: targeted.height_cm || 10,
+                },
+                fragile: targeted.is_fragile,
+              },
+              pickup: {
+                address: `${targeted.pickup_city} (Exact address revealed upon acceptance)`,
+                city: targeted.pickup_city,
+              },
+              destination: {
+                address: `${targeted.destination_city} (Exact address revealed upon acceptance)`,
+                city: targeted.destination_city,
+              },
+              recipient: {
+                name: 'Customer (Protected)',
+                phone: 'Hidden until accepted',
+              },
+              status: targeted.status as DeliveryStatus,
+              dispatchMode: targeted.dispatch_mode as 'auto' | 'manual',
+              estimatedPrice: targeted.estimated_price,
+              estimatedDeliveryTime: targeted.estimated_delivery_time || 'Same Day',
+              createdAt: targeted.created_at,
+              updatedAt: targeted.created_at,
+            };
+          }
+        }
+        return null;
       } catch (err) {
-        console.warn('deliveryService.getProviderTargetedOpportunity error, using fallback:', err);
+        console.error('deliveryService.getProviderTargetedOpportunity exception:', err);
+        return null;
       }
     }
 
@@ -469,11 +491,14 @@ export const deliveryService = {
           .eq('provider_id', providerId)
           .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          return data.map(mapDatabaseRowToDelivery);
+        if (error) {
+          console.error('deliveryService.getProviderAssignedDeliveries error:', error);
+          return [];
         }
+        return (data || []).map(mapDatabaseRowToDelivery);
       } catch (err) {
-        console.warn('deliveryService.getProviderAssignedDeliveries error, using fallback:', err);
+        console.error('deliveryService.getProviderAssignedDeliveries exception:', err);
+        return [];
       }
     }
 
@@ -491,27 +516,32 @@ export const deliveryService = {
     providerId: string,
     providerName: string
   ): Promise<DeliveryRecord | null> {
-    if (isSupabaseConfigured && isUuid(deliveryId) && isUuid(providerId)) {
-      try {
-        const { data, error } = await supabase.rpc('accept_delivery_opportunity', {
-          p_delivery_id: deliveryId,
-          p_provider_id: providerId,
-        });
+    if (isSupabaseConfigured) {
+      if (isUuid(deliveryId) && isUuid(providerId)) {
+        try {
+          const { data: res, error } = await supabase.rpc('accept_delivery_opportunity', {
+            p_delivery_id: deliveryId,
+            p_provider_id: providerId,
+          });
 
-        if (error) {
-          console.error('deliveryService.acceptDelivery RPC error:', error);
+          if (error) {
+            console.error('deliveryService.acceptDelivery RPC error:', error);
+            return null;
+          }
+
+          if (res && res.success) {
+            return await this.getDeliveryById(deliveryId);
+          }
+          if (res && !res.success) {
+            console.warn('deliveryService.acceptDelivery rejected by database:', res.error);
+          }
+          return null;
+        } catch (err) {
+          console.error('deliveryService.acceptDelivery exception:', err);
           return null;
         }
-
-        const res = data as { success?: boolean; error?: string } | null;
-        if (res && res.success) {
-          return await this.getDeliveryById(deliveryId);
-        }
-        return null;
-      } catch (err) {
-        console.error('deliveryService.acceptDelivery exception:', err);
-        return null;
       }
+      return null;
     }
 
     // Offline / Demo fallback with double-assignment guard
@@ -568,24 +598,26 @@ export const deliveryService = {
    * Declines a delivery opportunity and triggers automated queue advancement via RPC.
    */
   async declineOpportunity(deliveryId: string, providerId: string): Promise<boolean> {
-    if (isSupabaseConfigured && isUuid(deliveryId) && isUuid(providerId)) {
-      try {
-        const { data, error } = await supabase.rpc('decline_delivery_opportunity', {
-          p_delivery_id: deliveryId,
-          p_provider_id: providerId,
-        });
+    if (isSupabaseConfigured) {
+      if (isUuid(deliveryId) && isUuid(providerId)) {
+        try {
+          const { data: res, error } = await supabase.rpc('decline_delivery_opportunity', {
+            p_delivery_id: deliveryId,
+            p_provider_id: providerId,
+          });
 
-        if (error) {
-          console.error('deliveryService.declineOpportunity RPC error:', error);
+          if (error) {
+            console.error('deliveryService.declineOpportunity RPC error:', error);
+            return false;
+          }
+
+          return Boolean(res?.success);
+        } catch (err) {
+          console.error('deliveryService.declineOpportunity exception:', err);
           return false;
         }
-
-        const res = data as { success?: boolean } | null;
-        return Boolean(res?.success);
-      } catch (err) {
-        console.error('deliveryService.declineOpportunity exception:', err);
-        return false;
       }
+      return false;
     }
 
     // Offline / Demo fallback
@@ -629,44 +661,43 @@ export const deliveryService = {
 
   /**
    * Updates delivery status enforcing the state machine.
+   * In live mode, delegates to `transition_delivery_status` RPC which validates
+   * role authorization and automatically logs a single authoritative audit row.
    */
   async updateDeliveryStatus(
     deliveryId: string,
     status: DeliveryStatus,
-    userId?: string,
+    _userId?: string,
     notes?: string
   ): Promise<DeliveryRecord | null> {
-    if (isSupabaseConfigured && isUuid(deliveryId)) {
-      try {
-        const { error } = await supabase
-          .from('deliveries')
-          .update({
-            status,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', deliveryId);
+    if (isSupabaseConfigured) {
+      if (isUuid(deliveryId)) {
+        try {
+          const { data: res, error } = await supabase.rpc('transition_delivery_status', {
+            p_delivery_id: deliveryId,
+            p_new_status: status,
+            p_notes: notes || null,
+          });
 
-        if (error) {
-          console.error('deliveryService.updateDeliveryStatus error:', error);
+          if (error) {
+            console.error('deliveryService.updateDeliveryStatus error:', error);
+            return null;
+          }
+
+          if (res && res.success) {
+            return await this.getDeliveryById(deliveryId);
+          }
+
+          if (res && !res.success) {
+            console.warn('deliveryService.updateDeliveryStatus rejected:', res.error);
+          }
+          return null;
+        } catch (err) {
+          console.error('deliveryService.updateDeliveryStatus exception:', err);
           return null;
         }
-
-        // Audit log in status history if user is valid UUID
-        if (userId && isUuid(userId)) {
-          await supabase.from('delivery_status_history').insert({
-            delivery_id: deliveryId,
-            previous_status: null,
-            new_status: status,
-            changed_by_user_id: userId,
-            notes: notes || `Status updated to ${status}`,
-          });
-        }
-
-        return await this.getDeliveryById(deliveryId);
-      } catch (err) {
-        console.error('deliveryService.updateDeliveryStatus exception:', err);
-        return null;
       }
+      return null;
     }
 
     // Offline / Demo fallback

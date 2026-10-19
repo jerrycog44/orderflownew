@@ -4,6 +4,8 @@
  * Mirrors the schema produced by applying, in order:
  *   - supabase/migrations/001_initial_schema.sql
  *   - supabase/migrations/002_fix_auth_flow.sql
+ *   - supabase/migrations/003_dispatch_concurrency_and_security.sql
+ *   - supabase/migrations/004_atomic_dispatch_and_security_hardening.sql
  *
  * Format matches `supabase gen types typescript` output so the typed client
  * (`createClient<Database>`) resolves table/RPC types correctly. Requirements
@@ -239,6 +241,7 @@ export type Database = {
           delivery_notes: string | null;
           estimated_price: number;
           estimated_delivery_time: string | null;
+          idempotency_key: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -261,6 +264,7 @@ export type Database = {
           delivery_notes?: string | null;
           estimated_price: number;
           estimated_delivery_time?: string | null;
+          idempotency_key?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -283,6 +287,7 @@ export type Database = {
           delivery_notes?: string | null;
           estimated_price?: number;
           estimated_delivery_time?: string | null;
+          idempotency_key?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -375,6 +380,7 @@ export type Database = {
           status: Database['public']['Enums']['opportunity_status_enum'];
           sent_at: string | null;
           responded_at: string | null;
+          expires_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -385,6 +391,7 @@ export type Database = {
           status?: Database['public']['Enums']['opportunity_status_enum'];
           sent_at?: string | null;
           responded_at?: string | null;
+          expires_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -395,6 +402,7 @@ export type Database = {
           status?: Database['public']['Enums']['opportunity_status_enum'];
           sent_at?: string | null;
           responded_at?: string | null;
+          expires_at?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -417,6 +425,7 @@ export type Database = {
       delivery_status_history: {
         Row: {
           id: string;
+          seq: number;
           delivery_id: string;
           previous_status: Database['public']['Enums']['delivery_status'] | null;
           new_status: Database['public']['Enums']['delivery_status'];
@@ -426,6 +435,7 @@ export type Database = {
         };
         Insert: {
           id?: string;
+          seq?: number;
           delivery_id: string;
           previous_status?: Database['public']['Enums']['delivery_status'] | null;
           new_status: Database['public']['Enums']['delivery_status'];
@@ -435,6 +445,7 @@ export type Database = {
         };
         Update: {
           id?: string;
+          seq?: number;
           delivery_id?: string;
           previous_status?: Database['public']['Enums']['delivery_status'] | null;
           new_status?: Database['public']['Enums']['delivery_status'];
@@ -502,11 +513,106 @@ export type Database = {
       };
       accept_delivery_opportunity: {
         Args: { p_delivery_id: string; p_provider_id: string };
-        Returns: Json;
+        Returns: {
+          success: boolean;
+          code?: string;
+          error?: string;
+          already_accepted?: boolean;
+          delivery_id?: string;
+          status?: Database['public']['Enums']['delivery_status'];
+        };
       };
       decline_delivery_opportunity: {
         Args: { p_delivery_id: string; p_provider_id: string };
-        Returns: Json;
+        Returns: {
+          success: boolean;
+          code?: string;
+          error?: string;
+          delivery_id?: string;
+          status?: Database['public']['Enums']['delivery_status'];
+        };
+      };
+      create_delivery_transactional: {
+        Args: {
+          p_pickup_address: string;
+          p_pickup_city: string;
+          p_destination_address: string;
+          p_destination_city: string;
+          p_recipient_name: string;
+          p_recipient_phone: string;
+          p_estimated_price: number;
+          p_dispatch_mode: Database['public']['Enums']['dispatch_mode_enum'];
+          p_product_name: string;
+          p_item_category: string;
+          p_package_type: Database['public']['Enums']['package_type_enum'];
+          p_weight_kg: number;
+          p_quantity?: number | null;
+          p_length_cm?: number | null;
+          p_width_cm?: number | null;
+          p_height_cm?: number | null;
+          p_is_fragile?: boolean | null;
+          p_image_url?: string | null;
+          p_special_instructions?: string | null;
+          p_pickup_contact_name?: string | null;
+          p_pickup_contact_phone?: string | null;
+          p_delivery_notes?: string | null;
+          p_estimated_delivery_time?: string | null;
+          p_selected_provider_id?: string | null;
+          p_candidate_provider_ids?: string[] | null;
+          p_idempotency_key?: string | null;
+        };
+        Returns: {
+          success: boolean;
+          idempotent_replay: boolean;
+          delivery_id: string;
+          tracking_code: string;
+          status: Database['public']['Enums']['delivery_status'];
+          provider_id: string | null;
+          current_opportunity_provider_id: string | null;
+          candidate_provider_ids: string[];
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      transition_delivery_status: {
+        Args: {
+          p_delivery_id: string;
+          p_new_status: Database['public']['Enums']['delivery_status'];
+          p_notes?: string | null;
+        };
+        Returns: {
+          success: boolean;
+          code?: string;
+          error?: string;
+          unchanged?: boolean;
+          delivery_id?: string;
+          status?: Database['public']['Enums']['delivery_status'];
+        };
+      };
+      get_marketplace_opportunities: {
+        Args: { p_coverage_area?: string | null };
+        Returns: {
+          delivery_id: string;
+          tracking_code: string;
+          status: Database['public']['Enums']['delivery_status'];
+          dispatch_mode: Database['public']['Enums']['dispatch_mode_enum'];
+          pickup_city: string;
+          destination_city: string;
+          item_category: string;
+          package_type: Database['public']['Enums']['package_type_enum'];
+          quantity: number;
+          weight_kg: number;
+          length_cm: number | null;
+          width_cm: number | null;
+          height_cm: number | null;
+          is_fragile: boolean;
+          estimated_price: number;
+          estimated_delivery_time: string | null;
+          vendor_name: string;
+          is_targeted_offer: boolean;
+          offer_expires_at: string | null;
+          created_at: string;
+        }[];
       };
     };
     Enums: {
@@ -551,3 +657,15 @@ export type DeliveryStatus = Enums<'delivery_status'>;
 export type DispatchMode = Enums<'dispatch_mode_enum'>;
 export type PackageType = Enums<'package_type_enum'>;
 export type OpportunityStatus = Enums<'opportunity_status_enum'>;
+
+export type CreateDeliveryTransactionalResult =
+  Database['public']['Functions']['create_delivery_transactional']['Returns'];
+export type MarketplaceOpportunity =
+  Database['public']['Functions']['get_marketplace_opportunities']['Returns'][number];
+export type TransitionDeliveryStatusResult =
+  Database['public']['Functions']['transition_delivery_status']['Returns'];
+export type AcceptDeliveryOpportunityResult =
+  Database['public']['Functions']['accept_delivery_opportunity']['Returns'];
+export type DeclineDeliveryOpportunityResult =
+  Database['public']['Functions']['decline_delivery_opportunity']['Returns'];
+

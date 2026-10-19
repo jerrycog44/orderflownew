@@ -27,11 +27,13 @@ export const ProviderDashboardPage: React.FC = () => {
   const [opportunities, setOpportunities] = useState<DeliveryRecord[]>([]);
   const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const providerName = profile?.providerName || user?.fullName || 'SwiftHaul Express';
 
   const refreshData = useCallback(async (coverageArea?: string) => {
     try {
+      setRefreshError(null);
       const [targeted, opps, assigned] = await Promise.all([
         deliveryService.getProviderTargetedOpportunity(providerId),
         deliveryService.getProviderOpportunities(coverageArea),
@@ -42,6 +44,7 @@ export const ProviderDashboardPage: React.FC = () => {
       setAssignedDeliveries(assigned);
     } catch (err) {
       console.error('Error refreshing provider data:', err);
+      setRefreshError(err instanceof Error ? err.message : 'Failed to refresh dispatch opportunities.');
     }
   }, [providerId]);
 
@@ -142,6 +145,12 @@ export const ProviderDashboardPage: React.FC = () => {
         type: 'info',
       });
       await refreshData(profile?.coverageArea);
+    } else {
+      addToast({
+        title: 'Status Update Failed',
+        description: `Unable to transition delivery ${jobId} to ${newStatus}. Please verify your permissions or try again.`,
+        type: 'error',
+      });
     }
   };
 
@@ -262,6 +271,34 @@ export const ProviderDashboardPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Database/Network Refresh Error Alert Banner */}
+      {refreshError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-4)',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            borderRadius: 'var(--radius-md)',
+            color: '#DC2626',
+            fontSize: 'var(--font-size-sm)',
+            marginBottom: 'var(--space-6)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <AlertCircle size={18} />
+            <span>{refreshError}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refreshData(profile?.coverageArea)} disabled={isLoading}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Targeted Incoming Opportunity Alert Card */}
       {targetedOpportunity && availability !== 'unavailable' && (
