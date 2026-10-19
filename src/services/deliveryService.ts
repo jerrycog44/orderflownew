@@ -171,12 +171,12 @@ export const deliveryService = {
         const { data, error } = await query.maybeSingle();
         if (error) {
           console.error('deliveryService.getDeliveryById error:', error);
-          return null;
+          throw new Error(error.message || 'Failed to fetch delivery');
         }
         return data ? mapDatabaseRowToDelivery(data) : null;
       } catch (err) {
         console.error('deliveryService.getDeliveryById exception:', err);
-        return null;
+        throw err;
       }
     }
 

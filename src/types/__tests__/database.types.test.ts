@@ -38,6 +38,11 @@ function typeAssertions() {
   // New atomic dispatch RPCs must accept typed parameters
   void supabase.rpc('accept_delivery_opportunity', { p_delivery_id: 'del-1', p_provider_id: 'prov-1' });
   void supabase.rpc('decline_delivery_opportunity', { p_delivery_id: 'del-1', p_provider_id: 'prov-1' });
+  void supabase.rpc('transition_delivery_status', { p_delivery_id: 'del-1', p_new_status: 'in_transit' });
+  void supabase.rpc('get_marketplace_opportunities', { p_coverage_area: 'Lagos' });
+
+  // @ts-expect-error — invalid status passed to transition_delivery_status
+  void supabase.rpc('transition_delivery_status', { p_delivery_id: 'del-1', p_new_status: 'teleported' });
 
   // Migration 002: role & phone are nullable.
   const nullableRole: Tables<'profiles'>['role'] = null;

@@ -34,7 +34,10 @@ export const logisticsService = {
 
         if (!error && data && data.length > 0) {
           return data.map((row): LogisticsProvider => {
-            const availStatus = (row.provider_availability?.status as ProviderAvailability) || 'available';
+            const availObj = Array.isArray(row.provider_availability)
+              ? row.provider_availability[0]
+              : row.provider_availability;
+            const availStatus = (availObj?.status as ProviderAvailability) || 'available';
             const serviceAreas = row.service_areas && row.service_areas.length > 0
               ? row.service_areas
               : [row.coverage_area];
@@ -354,7 +357,10 @@ export const logisticsService = {
             coverageArea: data.coverage_area,
             vehicleTypes: data.vehicle_types,
             packageCategories: data.package_categories,
-            availability: (data.provider_availability?.status as ProviderAvailability) || 'available',
+            availability:
+              ((Array.isArray(data.provider_availability)
+                ? data.provider_availability[0]?.status
+                : data.provider_availability?.status) as ProviderAvailability) || 'available',
             createdAt: data.created_at,
           };
         }

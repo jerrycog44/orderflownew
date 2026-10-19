@@ -115,6 +115,39 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
     expect(localStorage.getItem('of_dev_deliveries')).toBeNull();
   });
 
+  it('getDeliveryById throws an error on database failure and returns null on 404', async () => {
+    // 1. DB Error case
+    mockFrom.mockReturnValueOnce({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: null,
+            error: { message: 'Connection to database terminated' },
+          }),
+        }),
+      }),
+    });
+
+    await expect(deliveryService.getDeliveryById(testDeliveryId)).rejects.toThrow(
+      'Connection to database terminated'
+    );
+
+    // 2. 404 Not Found case
+    mockFrom.mockReturnValueOnce({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+        }),
+      }),
+    });
+
+    const notFound = await deliveryService.getDeliveryById(testDeliveryId);
+    expect(notFound).toBeNull();
+  });
+
   it('calls get_marketplace_opportunities with PII-safe filtering', async () => {
     mockRpc.mockResolvedValueOnce({
       data: [
