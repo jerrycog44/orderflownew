@@ -11,6 +11,7 @@
 
 ALTER TABLE profiles ALTER COLUMN role DROP NOT NULL;
 ALTER TABLE profiles ALTER COLUMN phone DROP NOT NULL;
+ALTER TABLE profiles ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE profiles DROP CONSTRAINT IF EXISTS chk_profiles_phone_format;
 
 -- ----------------------------------------------------------------------------
@@ -38,7 +39,7 @@ BEGIN
   VALUES (
     NEW.id,
     COALESCE(NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''), 'User'),
-    COALESCE(NEW.email, ''),
+    NULLIF(TRIM(NEW.email), ''),
     NULLIF(TRIM(NEW.raw_user_meta_data->>'phone'), ''),  -- NULL is fine now
     NULL,   -- role assigned during role selection step
     FALSE

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Star, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Info, AlertTriangle } from 'lucide-react';
 import type { LogisticsProvider, PackageDetails, LocationPoint } from '../../types';
 import { logisticsService } from '../../services/logisticsService';
@@ -27,12 +27,36 @@ export const ProviderSelectionStep: React.FC<ProviderSelectionStepProps> = ({
 }) => {
   const [detailProvider, setDetailProvider] = useState<LogisticsProvider | null>(null);
 
-  // Run recommendation engine
-  const providers = logisticsService.recommendLogisticsProviders({
-    package: packageData,
-    pickup,
-    destination,
-  });
+  // Initialize with fast synchronous recommendation, then hydrate with live database providers
+  const [providers, setProviders] = useState<LogisticsProvider[]>(() =>
+    logisticsService.recommendLogisticsProviders({
+      package: packageData,
+      pickup,
+      destination,
+    })
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    logisticsService
+      .getRecommendedProviders({
+        package: packageData,
+        pickup,
+        destination,
+      })
+      .then((evaluated) => {
+        if (isMounted) {
+          setProviders(evaluated);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load recommended providers:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [packageData, pickup, destination]);
 
   const availableProviders = providers.filter((p) => p.availability === 'available');
 

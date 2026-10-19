@@ -1,5 +1,14 @@
-import type { PackageDetails, LocationPoint, LogisticsProvider } from '../types';
+import type {
+  PackageDetails,
+  LocationPoint,
+  LogisticsProvider,
+  ProviderAvailability,
+  LogisticsProviderProfile,
+  VendorProfile,
+  PackageType,
+} from '../types';
 import { MOCK_LOGISTICS_PROVIDERS } from '../data/mockProviders';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface DeliveryRequestFormInput {
   package: PackageDetails;
@@ -9,14 +18,78 @@ export interface DeliveryRequestFormInput {
 
 export const logisticsService = {
   /**
-   * Evaluates delivery parameters and returns available logistics providers,
-   * sorted deterministically with recommendation tags.
+   * Retrieves logistics providers. When live Supabase credentials are configured,
+   * queries the `logistics_providers` table joined with real-time `provider_availability`.
+   * Falls back to seed providers in offline/demo mode.
    */
-  recommendLogisticsProviders(input: DeliveryRequestFormInput): LogisticsProvider[] {
+  async getProviders(): Promise<LogisticsProvider[]> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('logistics_providers')
+          .select(`
+            *,
+            provider_availability (status)
+          `);
+
+        if (!error && data && data.length > 0) {
+          return data.map((row): LogisticsProvider => {
+            const availStatus = (row.provider_availability?.status as ProviderAvailability) || 'available';
+            const serviceAreas = row.service_areas && row.service_areas.length > 0
+              ? row.service_areas
+              : [row.coverage_area];
+
+            return {
+              id: row.id,
+              name: row.provider_name,
+              logoUrl: row.logo_url || undefined,
+              availability: availStatus,
+              serviceAreas,
+              estimatedPrice: 3500,
+              currency: 'NGN',
+              estimatedDeliveryTime: 'Same Day (2–4 hours)',
+              vehicleTypes: row.vehicle_types && row.vehicle_types.length > 0
+                ? row.vehicle_types
+                : ['Motorcycle'],
+              supportedPackageTypes: (row.package_categories && row.package_categories.length > 0
+                ? row.package_categories
+                : ['parcel', 'box', 'bag']) as PackageType[],
+              rating: row.rating || 4.8,
+              reviewCount: row.review_count || 120,
+              capacity: 'Standard Fleet',
+            };
+          });
+        }
+      } catch (err) {
+        console.warn('logisticsService.getProviders: Falling back to seed providers due to fetch error:', err);
+      }
+    }
+
+    // Offline / Mock fallback: populate with local dynamic availability
+    return MOCK_LOGISTICS_PROVIDERS.map((provider) => {
+      const dynamicAvail = this.getDynamicAvailability(provider.id);
+      return dynamicAvail ? { ...provider, availability: dynamicAvail } : provider;
+    });
+  },
+
+  /**
+   * Synchronously evaluates delivery parameters against a pool of logistics providers,
+   * calculating suitability scores, route coverage, and recommendation tags.
+   */
+  recommendLogisticsProviders(
+    input: DeliveryRequestFormInput,
+    providerPool?: LogisticsProvider[]
+  ): LogisticsProvider[] {
     const { package: pkg, pickup, destination } = input;
+    const pool = providerPool && providerPool.length > 0
+      ? providerPool
+      : MOCK_LOGISTICS_PROVIDERS.map((p) => {
+          const dynamicAvail = this.getDynamicAvailability(p.id);
+          return dynamicAvail ? { ...p, availability: dynamicAvail } : p;
+        });
 
     // Filter and compute suitability scores
-    const evaluatedProviders = MOCK_LOGISTICS_PROVIDERS.map((provider) => {
+    const evaluatedProviders = pool.map((provider) => {
       let isCovered = true;
       const pCity = (pickup.city || '').trim().toLowerCase();
       const dCity = (destination.city || '').trim().toLowerCase();
@@ -34,7 +107,7 @@ export const logisticsService = {
       const supportsType = provider.supportedPackageTypes.includes(pkg.packageType);
 
       // Adjust price estimate based on weight & city match
-      let price = provider.estimatedPrice;
+      let price = provider.estimatedPrice || 3500;
       if (pCity !== dCity && pCity && dCity) {
         // Inter-state delivery surcharge
         price = Math.round(price * 1.8);
@@ -85,7 +158,7 @@ export const logisticsService = {
         reason = 'Drivers currently active. Pickup timing may experience slight delay.';
       } else if (index === 0) {
         tag = 'Best match for package';
-        reason = `Optimal vehicle match (${provider.vehicleTypes[0]}) and immediate pickup availability.`;
+        reason = `Optimal vehicle match (${provider.vehicleTypes[0] || 'courier'}) and immediate pickup availability.`;
       } else if (provider.estimatedPrice === minPrice && minPrice > 0) {
         tag = 'Lowest estimated price';
         reason = 'Most cost-effective logistics rate for your specified package dimensions.';
@@ -106,9 +179,58 @@ export const logisticsService = {
   },
 
   /**
-   * Get single provider by ID
+   * Asynchronously fetches live registered providers and evaluates recommendations.
    */
-  getProviderById(id: string): LogisticsProvider | undefined {
+  async getRecommendedProviders(input: DeliveryRequestFormInput): Promise<LogisticsProvider[]> {
+    const providers = await this.getProviders();
+    return this.recommendLogisticsProviders(input, providers);
+  },
+
+  /**
+   * Get single provider by ID (asynchronous with live database lookup and offline fallback).
+   */
+  async getProviderById(id: string): Promise<LogisticsProvider | undefined> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('logistics_providers')
+          .select(`
+            *,
+            provider_availability (status)
+          `)
+          .eq('id', id)
+          .maybeSingle();
+
+        if (!error && data) {
+          const availStatus = (data.provider_availability?.status as ProviderAvailability) || 'available';
+          return {
+            id: data.id,
+            name: data.provider_name,
+            logoUrl: data.logo_url || undefined,
+            availability: availStatus,
+            serviceAreas: data.service_areas || [data.coverage_area],
+            estimatedPrice: 3500,
+            currency: 'NGN',
+            estimatedDeliveryTime: 'Same Day (2–4 hours)',
+            vehicleTypes: data.vehicle_types || ['Motorcycle'],
+            supportedPackageTypes: (data.package_categories || ['parcel']) as PackageType[],
+            rating: data.rating || 4.8,
+            reviewCount: data.review_count || 120,
+            capacity: 'Standard Fleet',
+          };
+        }
+      } catch (err) {
+        console.warn('logisticsService.getProviderById: Database lookup failed, using fallback:', err);
+      }
+    }
+
+    return this.getProviderByIdSync(id);
+  },
+
+  /**
+   * Synchronous provider lookup from mock seed data (preserves synchronous caller compatibility).
+   */
+  getProviderByIdSync(id: string): LogisticsProvider | undefined {
     const base = MOCK_LOGISTICS_PROVIDERS.find((p) => p.id === id);
     if (!base) return undefined;
     const dynamicAvail = this.getDynamicAvailability(id);
@@ -116,9 +238,9 @@ export const logisticsService = {
   },
 
   /**
-   * Checks localStorage for dynamically updated provider availability status.
+   * Checks localStorage for dynamically updated provider availability status in demo mode.
    */
-  getDynamicAvailability(providerId: string): LogisticsProvider['availability'] | null {
+  getDynamicAvailability(providerId: string): ProviderAvailability | null {
     try {
       const saved = localStorage.getItem(`of_dev_availability_${providerId}`);
       if (saved === 'available' || saved === 'busy' || saved === 'unavailable') {
@@ -131,15 +253,57 @@ export const logisticsService = {
   },
 
   /**
+   * Updates provider availability in the live database and persists to local demo storage.
+   */
+  async updateProviderAvailability(
+    providerId: string,
+    status: ProviderAvailability
+  ): Promise<boolean> {
+    // Write to local demo storage
+    try {
+      localStorage.setItem(`of_dev_availability_${providerId}`, status);
+    } catch {
+      // storage quota or disabled
+    }
+
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase
+          .from('provider_availability')
+          .upsert(
+            {
+              provider_id: providerId,
+              status,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'provider_id' }
+          );
+
+        if (error) {
+          console.error('logisticsService.updateProviderAvailability: Supabase upsert error:', error);
+          return false;
+        }
+        return true;
+      } catch (err) {
+        console.error('logisticsService.updateProviderAvailability exception:', err);
+        return false;
+      }
+    }
+
+    return true;
+  },
+
+  /**
    * Evaluates delivery specifications and produces an ordered list of eligible provider candidates
    * for automated targeted dispatching. Excludes busy or offline/unavailable providers, unsupported areas,
    * and already-declined providers.
    */
   buildCandidateQueue(
     input: DeliveryRequestFormInput,
-    excludedProviderIds: string[] = []
+    excludedProviderIds: string[] = [],
+    providerPool?: LogisticsProvider[]
   ): LogisticsProvider[] {
-    const recommended = this.recommendLogisticsProviders(input);
+    const recommended = this.recommendLogisticsProviders(input, providerPool);
     const excludedSet = new Set(excludedProviderIds);
 
     // Filter strictly for eligible candidates:
@@ -153,5 +317,100 @@ export const logisticsService = {
       if (p.recommendationTag === 'Outside service area') return false;
       return true;
     });
+  },
+
+  /**
+   * Asynchronously builds a candidate queue querying live available providers.
+   */
+  async getCandidateQueue(
+    input: DeliveryRequestFormInput,
+    excludedProviderIds: string[] = []
+  ): Promise<LogisticsProvider[]> {
+    const providers = await this.getProviders();
+    return this.buildCandidateQueue(input, excludedProviderIds, providers);
+  },
+
+  /**
+   * Loads a logistics provider profile from Supabase `logistics_providers` table
+   * with fallback to local development mock storage.
+   */
+  async getProviderProfile(userId: string): Promise<LogisticsProviderProfile | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('logistics_providers')
+          .select(`
+            *,
+            provider_availability (status)
+          `)
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            userId: data.id,
+            providerName: data.provider_name,
+            providerType: (data.provider_type as LogisticsProviderProfile['providerType']) || 'courier',
+            coverageArea: data.coverage_area,
+            vehicleTypes: data.vehicle_types,
+            packageCategories: data.package_categories,
+            availability: (data.provider_availability?.status as ProviderAvailability) || 'available',
+            createdAt: data.created_at,
+          };
+        }
+      } catch (err) {
+        console.warn('logisticsService.getProviderProfile: Supabase fetch failed, falling back:', err);
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem('of_dev_provider_profiles');
+      if (raw) {
+        const profiles: Record<string, LogisticsProviderProfile> = JSON.parse(raw);
+        return profiles[userId] || null;
+      }
+    } catch {
+      // storage error
+    }
+    return null;
+  },
+
+  /**
+   * Loads a vendor profile from Supabase `vendors` table
+   * with fallback to local development mock storage.
+   */
+  async getVendorProfile(userId: string): Promise<VendorProfile | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('vendors')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            userId: data.id,
+            businessName: data.business_name,
+            businessCategory: data.business_category,
+            operatingCity: data.operating_city,
+            createdAt: data.created_at,
+          };
+        }
+      } catch (err) {
+        console.warn('logisticsService.getVendorProfile: Supabase fetch failed, falling back:', err);
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem('of_dev_vendor_profiles');
+      if (raw) {
+        const profiles: Record<string, VendorProfile> = JSON.parse(raw);
+        return profiles[userId] || null;
+      }
+    } catch {
+      // storage error
+    }
+    return null;
   },
 };

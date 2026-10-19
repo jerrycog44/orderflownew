@@ -27,6 +27,7 @@ export const SignUpPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailConfirmationRequired, setEmailConfirmationRequired] = useState(false);
 
   const validateStep1 = (): boolean => {
     const errs: Record<string, string> = {};
@@ -62,7 +63,7 @@ export const SignUpPage: React.FC = () => {
     if (!validateStep2()) return;
 
     setIsSubmitting(true);
-    const { error } = await signUp({
+    const { error, requiresEmailConfirmation } = await signUp({
       fullName: formData.fullName,
       email: formData.email,
       phone: formData.phone,
@@ -72,6 +73,11 @@ export const SignUpPage: React.FC = () => {
 
     if (error) {
       setAuthError(error.message);
+      return;
+    }
+
+    if (requiresEmailConfirmation) {
+      setEmailConfirmationRequired(true);
       return;
     }
 
@@ -100,6 +106,42 @@ export const SignUpPage: React.FC = () => {
   };
 
   const strength = getPasswordStrength();
+
+  if (emailConfirmationRequired) {
+    return (
+      <AuthLayout backLink={{ to: '/login', label: 'Back to sign in' }}>
+        <div style={{ textAlign: 'center', padding: 'var(--space-6) 0' }}>
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: 'var(--radius-full)',
+              background: 'rgba(16, 185, 129, 0.12)',
+              color: '#10B981',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto var(--space-4) auto',
+            }}
+          >
+            <CheckCircle2 size={36} />
+          </div>
+          <h1 className="of-auth-heading">Check your email</h1>
+          <p className="of-auth-subheading" style={{ maxWidth: '400px', margin: '0 auto var(--space-6) auto' }}>
+            We sent a verification link to <strong>{formData.email}</strong>. Please confirm your email to activate your account.
+          </p>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={() => navigate('/login')}
+            style={{ width: '100%' }}
+          >
+            Proceed to Sign In
+          </Button>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout backLink={{ to: '/', label: 'Back to OrderFlow' }}>

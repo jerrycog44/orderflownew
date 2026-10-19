@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Truck, LogOut, MapPin, Navigation, CheckCircle2, PackageCheck, Phone, User as UserIcon, XCircle, AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
+import { logisticsService } from '../services/logisticsService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -20,51 +21,65 @@ export const ProviderDashboardPage: React.FC = () => {
 
   const providerId = user?.id || 'prov_swifthaul';
 
-  // Availability state
-  const [availability, setAvailability] = useState<ProviderAvailability>(() => {
-    const saved = localStorage.getItem(`of_dev_availability_${providerId}`);
-    return (saved as ProviderAvailability) || 'available';
-  });
-
-  // Lazy initialize profile
-  const [profile] = useState<LogisticsProviderProfile | null>(() => {
-    if (user?.id) {
-      try {
-        const raw = localStorage.getItem('of_dev_provider_profiles');
-        if (raw) {
-          const profiles: Record<string, LogisticsProviderProfile> = JSON.parse(raw);
-          return profiles[user.id] || null;
-        }
-      } catch {
-        // ignore parse error
-      }
-    }
-    return null;
-  });
+  const [availability, setAvailability] = useState<ProviderAvailability>('available');
+  const [profile, setProfile] = useState<LogisticsProviderProfile | null>(null);
+  const [targetedOpportunity, setTargetedOpportunity] = useState<DeliveryRecord | null>(null);
+  const [opportunities, setOpportunities] = useState<DeliveryRecord[]>([]);
+  const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const providerName = profile?.providerName || user?.fullName || 'SwiftHaul Express';
 
-  const [targetedOpportunity, setTargetedOpportunity] = useState<DeliveryRecord | null>(() => {
-    return deliveryService.getProviderTargetedOpportunity(providerId);
-  });
+  const refreshData = useCallback(async (coverageArea?: string) => {
+    try {
+      const [targeted, opps, assigned] = await Promise.all([
+        deliveryService.getProviderTargetedOpportunity(providerId),
+        deliveryService.getProviderOpportunities(coverageArea),
+        deliveryService.getProviderAssignedDeliveries(providerId),
+      ]);
+      setTargetedOpportunity(targeted);
+      setOpportunities(opps);
+      setAssignedDeliveries(assigned);
+    } catch (err) {
+      console.error('Error refreshing provider data:', err);
+    }
+  }, [providerId]);
 
-  const [opportunities, setOpportunities] = useState<DeliveryRecord[]>(() => {
-    return deliveryService.getProviderOpportunities(profile?.coverageArea);
-  });
+  useEffect(() => {
+    let isMounted = true;
 
-  const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>(() => {
-    return deliveryService.getProviderAssignedDeliveries(providerId);
-  });
+    async function loadInitialProviderData() {
+      try {
+        const prof = await logisticsService.getProviderProfile(providerId);
+        if (!isMounted) return;
 
-  const refreshData = () => {
-    setTargetedOpportunity(deliveryService.getProviderTargetedOpportunity(providerId));
-    setOpportunities(deliveryService.getProviderOpportunities(profile?.coverageArea));
-    setAssignedDeliveries(deliveryService.getProviderAssignedDeliveries(providerId));
-  };
+        if (prof) {
+          setProfile(prof);
+          if (prof.availability) {
+            setAvailability(prof.availability);
+          }
+        }
 
-  const handleAvailabilityChange = (newStatus: ProviderAvailability) => {
+        await refreshData(prof?.coverageArea);
+      } catch (err) {
+        console.error('Failed to load provider profile:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadInitialProviderData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [providerId, refreshData]);
+
+  const handleAvailabilityChange = async (newStatus: ProviderAvailability) => {
     setAvailability(newStatus);
-    localStorage.setItem(`of_dev_availability_${providerId}`, newStatus);
+    await logisticsService.updateProviderAvailability(providerId, newStatus);
 
     const statusLabels: Record<ProviderAvailability, string> = {
       available: 'Online & Available for Dispatches',
@@ -77,11 +92,11 @@ export const ProviderDashboardPage: React.FC = () => {
       description: `Your status is now ${statusLabels[newStatus]}.`,
       type: newStatus === 'available' ? 'success' : newStatus === 'busy' ? 'warning' : 'info',
     });
-    refreshData();
+    await refreshData(profile?.coverageArea);
   };
 
-  const handleAcceptJob = (job: DeliveryRecord) => {
-    const updated = deliveryService.acceptDelivery(job.id, providerId, providerName);
+  const handleAcceptJob = async (job: DeliveryRecord) => {
+    const updated = await deliveryService.acceptDelivery(job.id, providerId, providerName);
     if (updated) {
       addToast({
         title: 'Dispatch Accepted!',
@@ -89,7 +104,7 @@ export const ProviderDashboardPage: React.FC = () => {
         type: 'success',
       });
       setSelectedJob(null);
-      refreshData();
+      await refreshData(profile?.coverageArea);
       setActiveTab('assigned');
     } else {
       addToast({
@@ -98,23 +113,23 @@ export const ProviderDashboardPage: React.FC = () => {
         type: 'error',
       });
       setSelectedJob(null);
-      refreshData();
+      await refreshData(profile?.coverageArea);
     }
   };
 
-  const handleDeclineJob = (jobId: string) => {
-    deliveryService.declineOpportunity(jobId, providerId);
+  const handleDeclineJob = async (jobId: string) => {
+    await deliveryService.declineOpportunity(jobId, providerId);
     addToast({
       title: 'Opportunity Declined',
       description: `OrderFlow has routed delivery ${jobId} to the next eligible provider candidate.`,
       type: 'info',
     });
     setSelectedJob(null);
-    refreshData();
+    await refreshData(profile?.coverageArea);
   };
 
-  const handleUpdateStatus = (jobId: string, newStatus: DeliveryStatus) => {
-    const updated = deliveryService.updateDeliveryStatus(jobId, newStatus);
+  const handleUpdateStatus = async (jobId: string, newStatus: DeliveryStatus) => {
+    const updated = await deliveryService.updateDeliveryStatus(jobId, newStatus, user?.id);
     if (updated) {
       const statusLabels: Record<string, string> = {
         in_transit: 'In Transit',
@@ -126,12 +141,12 @@ export const ProviderDashboardPage: React.FC = () => {
         description: `Delivery ${jobId} status updated to ${statusLabels[newStatus] || newStatus}.`,
         type: 'info',
       });
-      refreshData();
+      await refreshData(profile?.coverageArea);
     }
   };
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     navigate('/login');
   };
 
@@ -435,7 +450,14 @@ export const ProviderDashboardPage: React.FC = () => {
                 <Badge variant="success">{opportunities.length} Open</Badge>
               </div>
 
-              {opportunities.length === 0 ? (
+              {isLoading ? (
+                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
+                  <Clock size={32} color="var(--color-brand-accent)" style={{ marginBottom: 'var(--space-2)', animation: 'spin 2s linear infinite' }} />
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                    Loading available delivery opportunities...
+                  </p>
+                </div>
+              ) : opportunities.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
                   <Truck size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
                   <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
@@ -527,7 +549,14 @@ export const ProviderDashboardPage: React.FC = () => {
                 <Badge variant="info">{assignedDeliveries.length} Active</Badge>
               </div>
 
-              {assignedDeliveries.length === 0 ? (
+              {isLoading ? (
+                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
+                  <Clock size={32} color="var(--color-brand-accent)" style={{ marginBottom: 'var(--space-2)', animation: 'spin 2s linear infinite' }} />
+                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                    Loading active dispatches...
+                  </p>
+                </div>
+              ) : assignedDeliveries.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
                   <Clock size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
                   <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>

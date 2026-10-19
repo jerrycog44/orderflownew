@@ -11,13 +11,14 @@ import type {
   AuthSession,
   AuthError,
   SignUpInput,
+  SignUpResult,
   LoginInput,
   ForgotPasswordInput,
   UpdateRoleInput,
   CompleteVendorOnboardingInput,
   CompleteProviderOnboardingInput,
 } from './authTypes';
-import type { User, UserRole, VendorProfile, LogisticsProviderProfile } from '../types';
+import type { User, VendorProfile, LogisticsProviderProfile } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // ---------------------------------------------------------------------------
@@ -28,10 +29,6 @@ const SESSION_KEY = 'of_dev_session';
 const USERS_KEY = 'of_dev_users';
 const VENDOR_PROFILES_KEY = 'of_dev_vendor_profiles';
 const PROVIDER_PROFILES_KEY = 'of_dev_provider_profiles';
-
-// Helper for type-safe Supabase table queries
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fromTable = (tableName: string): any => supabase.from(tableName as any);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -127,9 +124,10 @@ class SupabaseAuthService implements IAuthService {
     }
   }
 
-  private async fetchUserProfile(userId: string, fallbackEmail: string): Promise<User | null> {
+  public async fetchUserProfile(userId: string, fallbackEmail: string): Promise<User | null> {
     try {
-      const { data: profile, error } = await fromTable('profiles')
+      const { data: profile, error } = await supabase
+        .from('profiles')
         .select('*')
         .eq('id', userId)
         .single();
@@ -141,7 +139,7 @@ class SupabaseAuthService implements IAuthService {
         fullName: profile.full_name,
         email: profile.email || fallbackEmail,
         phone: profile.phone,
-        role: profile.role as UserRole | null,
+        role: profile.role,
         onboardingCompleted: profile.onboarding_completed,
         createdAt: profile.created_at,
         updatedAt: profile.updated_at,
@@ -152,21 +150,10 @@ class SupabaseAuthService implements IAuthService {
   }
 
   getSession(): AuthSession | null {
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEY);
-      if (raw) {
-        const session: AuthSession = JSON.parse(raw);
-        if (new Date(session.expiresAt) > new Date()) {
-          return session;
-        }
-      }
-    } catch {
-      // ignore
-    }
     return this.currentSession;
   }
 
-  async signUp(input: SignUpInput): Promise<{ session: AuthSession | null; error: AuthError | null }> {
+  async signUp(input: SignUpInput): Promise<SignUpResult> {
     if (!input.email || !input.email.includes('@')) {
       return { session: null, error: { code: 'invalid_email', message: 'Please enter a valid email address.' } };
     }
@@ -208,32 +195,41 @@ class SupabaseAuthService implements IAuthService {
     }
 
     // Profile row is auto-created by the handle_new_user() database trigger.
-    // We update phone here in case the trigger stored a partial value from metadata.
-    await fromTable('profiles')
-      .update({ phone: formattedPhone, full_name: input.fullName.trim() })
-      .eq('id', data.user.id);
+    if (formattedPhone) {
+      await supabase
+        .from('profiles')
+        .update({ phone: formattedPhone, full_name: input.fullName.trim() })
+        .eq('id', data.user.id);
+    }
 
-    const user: User = {
-      id: data.user.id,
-      fullName: input.fullName.trim(),
-      email: input.email.toLowerCase().trim(),
-      phone: formattedPhone,
-      role: null,
-      onboardingCompleted: false,
-      createdAt: now(),
-      updatedAt: now(),
-    };
+    // If Supabase email confirmation is enabled, no session token is returned.
+    // Never treat a synthetic string as an access token.
+    if (!data.session) {
+      return {
+        session: null,
+        error: null,
+        requiresEmailConfirmation: true,
+      };
+    }
 
+    const user = await this.fetchUserProfile(data.user.id, input.email.toLowerCase().trim());
     const session: AuthSession = {
-      user,
-      accessToken: data.session?.access_token || `sb_token_${data.user.id}`,
-      expiresAt: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
+      user: user || {
+        id: data.user.id,
+        fullName: input.fullName.trim(),
+        email: input.email.toLowerCase().trim(),
+        phone: formattedPhone,
+        role: null,
+        onboardingCompleted: false,
+        createdAt: now(),
+        updatedAt: now(),
+      },
+      accessToken: data.session.access_token,
+      expiresAt: new Date((data.session.expires_at || 0) * 1000).toISOString(),
     };
 
     this.currentSession = session;
-    saveSession(session);
-
-    return { session, error: null };
+    return { session, error: null, requiresEmailConfirmation: false };
   }
 
   async login(input: LoginInput): Promise<{ session: AuthSession | null; error: AuthError | null }> {
@@ -262,13 +258,15 @@ class SupabaseAuthService implements IAuthService {
         id: data.user.id,
         fullName: data.user.user_metadata?.full_name || 'User',
         email: data.user.email || input.email,
-        phone: data.user.user_metadata?.phone || '+2340000000000',
+        // Never fabricate a phone: profiles.phone is UNIQUE, so a shared placeholder
+        // would make every subsequent phoneless upsert fail.
+        phone: data.user.user_metadata?.phone || null,
         role: null,
         onboardingCompleted: false,
         createdAt: now(),
         updatedAt: now(),
       };
-      await fromTable('profiles').upsert({
+      const { error: upsertErr } = await supabase.from('profiles').upsert({
         id: user.id,
         full_name: user.fullName,
         email: user.email,
@@ -276,6 +274,9 @@ class SupabaseAuthService implements IAuthService {
         role: user.role,
         onboarding_completed: false,
       });
+      if (upsertErr) {
+        console.warn('Profile self-heal upsert failed', upsertErr.message);
+      }
     }
 
     const session: AuthSession = {
@@ -285,8 +286,6 @@ class SupabaseAuthService implements IAuthService {
     };
 
     this.currentSession = session;
-    saveSession(session);
-
     return { session, error: null };
   }
 
@@ -299,27 +298,42 @@ class SupabaseAuthService implements IAuthService {
   }
 
   async setRole(input: UpdateRoleInput): Promise<{ user: User | null; error: AuthError | null }> {
-    // Use upsert as safety net: if trigger somehow missed creating the profile row,
-    // this ensures it exists before vendor/provider tables FK-reference it.
+    // The profile row is created by the handle_new_user() trigger (migration 002).
+    // Only update `role` — an upsert here previously reset onboarding_completed and
+    // could write an empty email that collides with UNIQUE(profiles.email).
     const session = this.getSession();
-    const { error } = await fromTable('profiles').upsert({
-      id: input.userId,
-      role: input.role,
-      full_name: session?.user.fullName || 'User',
-      email: session?.user.email || '',
-      phone: session?.user.phone || null,
-      onboarding_completed: false,
-    });
+    const { data: updatedRows, error } = await supabase
+      .from('profiles')
+      .update({ role: input.role })
+      .eq('id', input.userId)
+      .select('id');
 
     if (error) {
       return { user: null, error: { code: 'unknown', message: error.message } };
+    }
+
+    // Safety net: trigger missed the row (e.g. user created before migration 002).
+    if (!updatedRows || updatedRows.length === 0) {
+      const email = session?.user.email;
+      if (!email) {
+        return { user: null, error: { code: 'unknown', message: 'Profile not found. Please sign in again.' } };
+      }
+      const { error: insertErr } = await supabase.from('profiles').insert({
+        id: input.userId,
+        role: input.role,
+        full_name: session?.user.fullName || 'User',
+        email,
+        phone: session?.user.phone ?? null,
+      });
+      if (insertErr) {
+        return { user: null, error: { code: 'unknown', message: insertErr.message } };
+      }
     }
 
     if (session && session.user.id === input.userId) {
       const updatedUser: User = { ...session.user, role: input.role, updatedAt: now() };
       const updatedSession: AuthSession = { ...session, user: updatedUser };
       this.currentSession = updatedSession;
-      saveSession(updatedSession);
       return { user: updatedUser, error: null };
     }
 
@@ -328,7 +342,7 @@ class SupabaseAuthService implements IAuthService {
   }
 
   async completeVendorOnboarding(input: CompleteVendorOnboardingInput): Promise<{ user: User | null; error: AuthError | null }> {
-    const { error: vendorErr } = await fromTable('vendors').upsert({
+    const { error: vendorErr } = await supabase.from('vendors').upsert({
       id: input.userId,
       business_name: input.profile.businessName,
       business_category: input.profile.businessCategory,
@@ -339,7 +353,8 @@ class SupabaseAuthService implements IAuthService {
       return { user: null, error: { code: 'unknown', message: vendorErr.message } };
     }
 
-    const { error: profileErr } = await fromTable('profiles')
+    const { error: profileErr } = await supabase
+      .from('profiles')
       .update({ onboarding_completed: true })
       .eq('id', input.userId);
 
@@ -352,7 +367,6 @@ class SupabaseAuthService implements IAuthService {
       const updatedUser: User = { ...session.user, onboardingCompleted: true, updatedAt: now() };
       const updatedSession: AuthSession = { ...session, user: updatedUser };
       this.currentSession = updatedSession;
-      saveSession(updatedSession);
       return { user: updatedUser, error: null };
     }
 
@@ -361,7 +375,7 @@ class SupabaseAuthService implements IAuthService {
   }
 
   async completeProviderOnboarding(input: CompleteProviderOnboardingInput): Promise<{ user: User | null; error: AuthError | null }> {
-    const { error: providerErr } = await fromTable('logistics_providers').upsert({
+    const { error: providerErr } = await supabase.from('logistics_providers').upsert({
       id: input.userId,
       provider_name: input.profile.providerName,
       provider_type: input.profile.providerType,
@@ -374,12 +388,17 @@ class SupabaseAuthService implements IAuthService {
       return { user: null, error: { code: 'unknown', message: providerErr.message } };
     }
 
-    await fromTable('provider_availability').upsert({
+    const { error: availabilityErr } = await supabase.from('provider_availability').upsert({
       provider_id: input.userId,
       status: input.profile.availability || 'available',
     });
 
-    const { error: profileErr } = await fromTable('profiles')
+    if (availabilityErr) {
+      return { user: null, error: { code: 'unknown', message: availabilityErr.message } };
+    }
+
+    const { error: profileErr } = await supabase
+      .from('profiles')
       .update({ onboarding_completed: true })
       .eq('id', input.userId);
 
@@ -392,7 +411,6 @@ class SupabaseAuthService implements IAuthService {
       const updatedUser: User = { ...session.user, onboardingCompleted: true, updatedAt: now() };
       const updatedSession: AuthSession = { ...session, user: updatedUser };
       this.currentSession = updatedSession;
-      saveSession(updatedSession);
       return { user: updatedUser, error: null };
     }
 
@@ -400,10 +418,9 @@ class SupabaseAuthService implements IAuthService {
     return { user: updatedUser, error: null };
   }
 
-  signOut(): void {
-    supabase.auth.signOut();
+  async signOut(): Promise<void> {
+    await supabase.auth.signOut();
     this.currentSession = null;
-    clearSession();
   }
 }
 
@@ -427,7 +444,18 @@ class LocalAuthService implements IAuthService {
     }
   }
 
-  async signUp(input: SignUpInput): Promise<{ session: AuthSession | null; error: AuthError | null }> {
+  public async fetchUserProfile(userId: string, _fallbackEmail: string): Promise<User | null> {
+    const users = getUsers();
+    for (const u of Object.values(users)) {
+      if (u.id === userId) {
+        const { __passwordHash: _, ...clean } = u;
+        return clean;
+      }
+    }
+    return null;
+  }
+
+  async signUp(input: SignUpInput): Promise<SignUpResult> {
     await delay(600);
 
     if (!input.email || !input.email.includes('@')) {
@@ -459,7 +487,7 @@ class LocalAuthService implements IAuthService {
     const session = makeSession(user);
     saveSession(session);
 
-    return { session, error: null };
+    return { session, error: null, requiresEmailConfirmation: false };
   }
 
   async login(input: LoginInput): Promise<{ session: AuthSession | null; error: AuthError | null }> {

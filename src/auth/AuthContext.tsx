@@ -8,6 +8,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authService } from './authService';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type {
   AuthError,
   SignUpInput,
@@ -33,7 +34,7 @@ interface AuthContextValue {
   hasCompletedOnboarding: boolean;
 
   // Actions
-  signUp: (input: SignUpInput) => Promise<{ error: AuthError | null }>;
+  signUp: (input: SignUpInput) => Promise<{ error: AuthError | null; requiresEmailConfirmation?: boolean }>;
   login: (input: LoginInput) => Promise<{ user: User | null; error: AuthError | null }>;
   forgotPassword: (input: ForgotPasswordInput) => Promise<{ error: AuthError | null }>;
   setRole: (role: UserRole) => Promise<{ error: AuthError | null }>;
@@ -43,7 +44,7 @@ interface AuthContextValue {
   completeProviderOnboarding: (
     input: Omit<CompleteProviderOnboardingInput, 'userId'>
   ) => Promise<{ error: AuthError | null }>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,19 +57,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount: restore session from storage
+  // Subscribe to Supabase auth events and restore user profile reactively
   useEffect(() => {
-    const session = authService.getSession();
-    setUser(session?.user ?? null);
-    setIsLoading(false);
+    let isMounted = true;
+
+    if (isSupabaseConfigured) {
+      // 1. Initial session load
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        if (!isMounted) return;
+        if (session?.user) {
+          const profile = await authService.fetchUserProfile?.(
+            session.user.id,
+            session.user.email || ''
+          );
+          if (isMounted) setUser(profile ?? null);
+        } else {
+          if (isMounted) setUser(null);
+        }
+        if (isMounted) setIsLoading(false);
+      });
+
+      // 2. Auth state subscription (token refresh, sign-in, sign-out in another tab)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        async (_event, session) => {
+          if (!isMounted) return;
+          if (session?.user) {
+            const profile = await authService.fetchUserProfile?.(
+              session.user.id,
+              session.user.email || ''
+            );
+            if (isMounted) setUser(profile ?? null);
+          } else {
+            if (isMounted) setUser(null);
+          }
+          if (isMounted) setIsLoading(false);
+        }
+      );
+
+      return () => {
+        isMounted = false;
+        subscription.unsubscribe();
+      };
+    } else {
+      // Local dev simulation mode — schedule microtask to avoid synchronous render-phase update
+      queueMicrotask(() => {
+        if (!isMounted) return;
+        const session = authService.getSession();
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      });
+    }
   }, []);
 
-  const signUp = useCallback(async (input: SignUpInput): Promise<{ error: AuthError | null }> => {
-    const { session, error } = await authService.signUp(input);
+  const signUp = useCallback(async (input: SignUpInput): Promise<{ error: AuthError | null; requiresEmailConfirmation?: boolean }> => {
+    const { session, error, requiresEmailConfirmation } = await authService.signUp(input);
     if (session) {
       setUser(session.user);
     }
-    return { error };
+    return { error, requiresEmailConfirmation };
   }, []);
 
   const login = useCallback(async (input: LoginInput): Promise<{ user: User | null; error: AuthError | null }> => {
@@ -126,8 +172,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [user]
   );
 
-  const signOut = useCallback(() => {
-    authService.signOut();
+  const signOut = useCallback(async () => {
+    await authService.signOut();
     setUser(null);
   }, []);
 

@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, Search, MapPin, Navigation, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import type { DeliveryRecord } from '../types';
+import type { PublicTrackingInfo } from '../types';
 import './CustomerTrackingPage.css';
 
 const TRACKING_STEPS = [
@@ -39,19 +39,50 @@ export const CustomerTrackingPage: React.FC = () => {
   const { trackingCode } = useParams<{ trackingCode?: string }>();
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState(trackingCode || '');
-  const [delivery, setDelivery] = useState<DeliveryRecord | null>(() => {
-    return trackingCode ? deliveryService.getDeliveryByTrackingCode(trackingCode) : null;
-  });
+  const [trackingInfo, setTrackingInfo] = useState<PublicTrackingInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [searched, setSearched] = useState(Boolean(trackingCode));
 
-  const handleSearch = (e: React.FormEvent) => {
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTracking(code: string) {
+      setIsLoading(true);
+      setSearched(true);
+      try {
+        const info = await deliveryService.getPublicTracking(code);
+        if (isMounted) {
+          setTrackingInfo(info);
+        }
+      } catch (err) {
+        console.error('Error fetching public tracking info:', err);
+        if (isMounted) {
+          setTrackingInfo(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    if (trackingCode) {
+      loadTracking(trackingCode);
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [trackingCode]);
+
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchInput.trim()) return;
-    const found = deliveryService.getDeliveryByTrackingCode(searchInput.trim());
-    setDelivery(found);
-    navigate(`/track/${searchInput.trim()}`, { replace: true });
+    const clean = searchInput.trim();
+    if (!clean) return;
+    navigate(`/track/${clean}`);
   };
 
-  const currentStep = delivery ? getStepIndex(delivery.status) : 0;
+  const currentStep = trackingInfo ? getStepIndex(trackingInfo.status) : 0;
 
   return (
     <div className="tracking-page-container">
@@ -80,46 +111,57 @@ export const CustomerTrackingPage: React.FC = () => {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
-          <Button variant="primary" type="submit" leftIcon={<Search size={16} />}>
+          <Button variant="primary" type="submit" isLoading={isLoading} leftIcon={<Search size={16} />}>
             Track Order
           </Button>
         </form>
       </div>
 
-      {/* Tracking Result View */}
-      {delivery ? (
+      {/* Loading state */}
+      {isLoading ? (
+        <div className="tracking-card-section" style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>
+          <Clock size={40} color="var(--color-brand-accent)" style={{ marginBottom: 'var(--space-3)', animation: 'spin 2s linear infinite' }} />
+          <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
+            Verifying Tracking Code...
+          </h3>
+          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
+            Retrieving live milestone dispatch status from OrderFlow.
+          </p>
+        </div>
+      ) : trackingInfo ? (
+        /* Tracking Result View */
         <div className="tracking-card-section">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-3)', paddingBottom: 'var(--space-4)', borderBottom: '1px solid var(--color-border-default)' }}>
             <div>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-brand-accent)' }}>
-                TRACKING CODE: {delivery.id}
+                TRACKING CODE: {trackingInfo.trackingCode}
               </span>
               <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: '4px 0 0 0', color: 'var(--color-text-primary)' }}>
-                {delivery.productName}
+                {trackingInfo.productName}
               </h2>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                Dispatched by <strong>{delivery.vendorName}</strong>
+                Dispatched by <strong>{trackingInfo.vendorName}</strong>
               </span>
             </div>
 
             <div style={{ textAlign: 'right' }}>
-            <Badge
-              variant={
-                delivery.status === 'delivered'
-                  ? 'success'
-                  : delivery.status === 'in_transit'
-                  ? 'brand'
-                  : delivery.status === 'provider_selected' || delivery.status === 'awaiting_pickup'
-                  ? 'info'
-                  : 'warning'
-              }
-            >
-              {delivery.status === 'opportunity_sent' || delivery.status === 'searching'
-                ? 'Dispatching'
-                : delivery.status.replace(/_/g, ' ').toUpperCase()}
-            </Badge>
+              <Badge
+                variant={
+                  trackingInfo.status === 'delivered'
+                    ? 'success'
+                    : trackingInfo.status === 'in_transit'
+                    ? 'brand'
+                    : trackingInfo.status === 'provider_selected' || trackingInfo.status === 'awaiting_pickup'
+                    ? 'info'
+                    : 'warning'
+                }
+              >
+                {trackingInfo.status === 'opportunity_sent' || trackingInfo.status === 'searching'
+                  ? 'Dispatching'
+                  : trackingInfo.status.replace(/_/g, ' ').toUpperCase()}
+              </Badge>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>
-                Est. Delivery: <strong>{delivery.estimatedDeliveryTime || 'Same Day'}</strong>
+                Est. Delivery: <strong>{trackingInfo.estimatedDeliveryTime || 'Same Day'}</strong>
               </p>
             </div>
           </div>
@@ -149,29 +191,29 @@ export const CustomerTrackingPage: React.FC = () => {
             })}
           </div>
 
-          {/* Details Grid */}
+          {/* Details Grid (Sanitized - no recipient phone or private street address) */}
           <div className="tracking-info-grid">
             <div className="tracking-info-box">
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <MapPin size={14} /> PICKUP ORIGIN
+                <Package size={14} /> PACKAGE INFORMATION
               </span>
               <p style={{ fontWeight: 600, margin: '6px 0 2px 0', fontSize: 'var(--font-size-sm)' }}>
-                {delivery.pickup.address}
+                {trackingInfo.productName}
               </p>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                {delivery.pickup.city}
+                Dispatched by {trackingInfo.vendorName}
               </p>
             </div>
 
             <div className="tracking-info-box">
               <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Navigation size={14} /> RECIPIENT DESTINATION
+                <ShieldCheck size={14} /> PRIVACY & INTEGRITY
               </span>
               <p style={{ fontWeight: 600, margin: '6px 0 2px 0', fontSize: 'var(--font-size-sm)' }}>
-                {delivery.destination.address}
+                OrderFlow Verified Shipment
               </p>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                Recipient: <strong>{delivery.recipient.name}</strong> ({delivery.destination.city})
+                Milestone updates logged securely on OrderFlow network
               </p>
             </div>
 
@@ -180,22 +222,22 @@ export const CustomerTrackingPage: React.FC = () => {
                 <Truck size={14} /> LOGISTICS PARTNER
               </span>
               <p style={{ fontWeight: 600, margin: '6px 0 2px 0', fontSize: 'var(--font-size-sm)' }}>
-                {delivery.selectedProvider?.name || 'Assigning Partner...'}
+                {trackingInfo.providerName || 'Assigning Carrier Partner...'}
               </p>
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                Package: {delivery.package.weightKg} kg ({delivery.package.packageType})
+                Est. Delivery: {trackingInfo.estimatedDeliveryTime || 'Same Day'}
               </p>
             </div>
           </div>
         </div>
-      ) : trackingCode ? (
+      ) : searched ? (
         <div className="tracking-card-section" style={{ textAlign: 'center', padding: 'var(--space-12) 0' }}>
           <Clock size={40} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-3)' }} />
           <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
             Tracking Code Not Found
           </h3>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginTop: 'var(--space-2)' }}>
-            No delivery record was found matching <code>{trackingCode}</code>. Please double-check your code.
+            No delivery record was found matching <code>{trackingCode || searchInput}</code>. Please double-check your code.
           </p>
         </div>
       ) : (

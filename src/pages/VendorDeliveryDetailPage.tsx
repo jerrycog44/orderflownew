@@ -19,14 +19,28 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(id));
 
   useEffect(() => {
+    let isMounted = true;
+
     if (id) {
-      const record = deliveryService.getDeliveryById(id);
-      setDelivery(record);
+      deliveryService.getDeliveryById(id).then((record) => {
+        if (isMounted) {
+          setDelivery(record);
+          setIsLoading(false);
+        }
+      }).catch((err) => {
+        console.error('Failed to load delivery by id:', err);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
     }
-    setIsLoading(false);
+
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
   if (isLoading) {

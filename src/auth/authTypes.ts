@@ -73,21 +73,25 @@ export interface CompleteProviderOnboardingInput {
   profile: Omit<LogisticsProviderProfile, 'userId' | 'createdAt'>;
 }
 
+export interface SignUpResult {
+  session: AuthSession | null;
+  error: AuthError | null;
+  requiresEmailConfirmation?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Auth Service Interface
-//
-// This interface defines the contract that the real backend implementation
-// must satisfy. The current implementation (authService.ts) is a local-session
-// dev implementation. Replacing it with a real backend only requires
-// implementing this interface.
 // ---------------------------------------------------------------------------
 
 export interface IAuthService {
   /** Returns the current session if one exists */
   getSession(): AuthSession | null;
 
+  /** Fetch fresh user profile from profiles table */
+  fetchUserProfile?(userId: string, fallbackEmail: string): Promise<User | null>;
+
   /** Sign up a new user */
-  signUp(input: SignUpInput): Promise<{ session: AuthSession | null; error: AuthError | null }>;
+  signUp(input: SignUpInput): Promise<SignUpResult>;
 
   /** Sign in an existing user */
   login(input: LoginInput): Promise<{ session: AuthSession | null; error: AuthError | null }>;
@@ -109,5 +113,5 @@ export interface IAuthService {
   ): Promise<{ user: User | null; error: AuthError | null }>;
 
   /** Sign out the current user */
-  signOut(): void;
+  signOut(): Promise<void> | void;
 }

@@ -33,12 +33,12 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdDelivery, setCreatedDelivery] = useState<DeliveryRecord | null>(null);
 
-  const handleConfirmDelivery = () => {
+  const handleConfirmDelivery = async () => {
     setIsSubmitting(true);
 
     try {
       const isAuto = dispatchMode === 'auto' || !selectedProvider;
-      const newDelivery = deliveryService.createDelivery({
+      const newDelivery = await deliveryService.createDelivery({
         vendorId: user?.id || 'mock_vendor_1',
         vendorName: user?.fullName || 'Vendor',
         providerId: isAuto ? undefined : selectedProvider?.id,
@@ -56,8 +56,8 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       });
 
       setCreatedDelivery(newDelivery);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error('Failed to create delivery:', err);
     } finally {
       setIsSubmitting(false);
     }

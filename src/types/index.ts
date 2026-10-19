@@ -1,22 +1,16 @@
 /* OrderFlow TypeScript Domain Model Definitions */
 
-export type DeliveryStatus =
-  | 'draft'
-  | 'searching'
-  | 'opportunity_sent'
-  | 'created'
-  | 'provider_selected'
-  | 'awaiting_pickup'
-  | 'picked_up'
-  | 'in_transit'
-  | 'delivered'
-  | 'cancelled';
+import type { Enums } from './database.types';
 
-export type UserRole = 'vendor' | 'logistics_provider';
+// Enum-like unions are derived from the database schema so the domain model
+// and Postgres enums can never drift apart.
+export type DeliveryStatus = Enums<'delivery_status'>;
 
-export type PackageType = 'parcel' | 'box' | 'bag' | 'fragile_item' | 'other';
+export type UserRole = Enums<'user_role'>;
 
-export type ProviderAvailability = 'available' | 'busy' | 'unavailable';
+export type PackageType = Enums<'package_type_enum'>;
+
+export type ProviderAvailability = Enums<'availability_status'>;
 
 // ---------------------------------------------------------------------------
 // User & Account Models
@@ -24,13 +18,14 @@ export type ProviderAvailability = 'available' | 'busy' | 'unavailable';
 
 /**
  * Core user identity — shared across web and future WhatsApp integration.
- * Phone is required as it is the future WhatsApp identity key.
+ * Phone is the future WhatsApp identity key. It is nullable because the
+ * database (migration 002) allows profiles to exist before phone is confirmed.
  */
 export interface User {
   id: string;                        // UUID — stable across all platforms
   fullName: string;
   email: string;
-  phone: string;                     // Required — WhatsApp compatibility
+  phone: string | null;              // null until captured/confirmed
   role: UserRole | null;             // null until role is selected post-signup
   onboardingCompleted: boolean;
   createdAt: string;                 // ISO 8601
@@ -113,7 +108,8 @@ export interface LogisticsProvider {
  * DeliveryRecord represents a complete delivery request throughout its lifecycle.
  */
 export interface DeliveryRecord {
-  id: string;                         // e.g. OF-849201
+  id: string;                         // e.g. OF-849201 or UUID
+  trackingCode?: string;              // e.g. OF-849201
   vendorId: string;
   vendorName: string;
   providerId?: string;
@@ -145,6 +141,22 @@ export interface DeliveryRecord {
 
 // Backward compatibility interface
 export interface DeliveryRequest extends DeliveryRecord {}
+
+/**
+ * Public, privacy-safe tracking information exposed to unauthenticated visitors.
+ * Strictly excludes customer phone numbers, street addresses, and internal pricing.
+ */
+export interface PublicTrackingInfo {
+  trackingCode: string;
+  status: DeliveryStatus;
+  estimatedDeliveryTime: string | null;
+  createdAt: string;
+  updatedAt: string;
+  productName: string;
+  vendorName: string;
+  providerName: string | null;
+  providerLogoUrl: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // UI State Models

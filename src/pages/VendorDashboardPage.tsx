@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
+import { logisticsService } from '../services/logisticsService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import type { VendorProfile, DeliveryRecord } from '../types';
@@ -12,31 +13,43 @@ export const VendorDashboardPage: React.FC = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
-  // Lazy initialize profile from local storage
-  const [profile] = useState<VendorProfile | null>(() => {
-    if (user?.id) {
-      try {
-        const raw = localStorage.getItem('of_dev_vendor_profiles');
-        if (raw) {
-          const profiles: Record<string, VendorProfile> = JSON.parse(raw);
-          return profiles[user.id] || null;
-        }
-      } catch {
-        // ignore parse error
-      }
-    }
-    return null;
-  });
-
-  // Refresh deliveries on every mount to pick up new records
+  const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [deliveries, setDeliveries] = useState<DeliveryRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (user?.id) {
-      setDeliveries(deliveryService.getVendorDeliveries(user.id));
-    } else {
-      setDeliveries(deliveryService.getVendorDeliveries('mock_vendor_1'));
+    let isMounted = true;
+
+    async function loadVendorData() {
+      if (!user?.id) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const [prof, userDeliveries] = await Promise.all([
+          logisticsService.getVendorProfile(user.id),
+          deliveryService.getVendorDeliveries(user.id),
+        ]);
+
+        if (isMounted) {
+          setProfile(prof);
+          setDeliveries(userDeliveries);
+        }
+      } catch (err) {
+        console.error('Failed to load vendor dashboard data:', err);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
     }
+
+    loadVendorData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [user?.id]);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,8 +89,8 @@ export const VendorDashboardPage: React.FC = () => {
     return matchesQuery && matchesStatus;
   });
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     navigate('/login');
   };
 
@@ -200,7 +213,14 @@ export const VendorDashboardPage: React.FC = () => {
           </div>
 
           {/* Deliveries List */}
-          {filteredDeliveries.length === 0 ? (
+          {isLoading ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px' }}>
+              <Clock size={32} color="var(--color-brand-accent)" style={{ marginBottom: '12px', animation: 'spin 2s linear infinite' }} />
+              <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Loading your delivery dispatches...
+              </p>
+            </div>
+          ) : filteredDeliveries.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
               <Package size={32} color="var(--color-text-muted)" style={{ marginBottom: '12px' }} />
               <h3 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '4px' }}>
