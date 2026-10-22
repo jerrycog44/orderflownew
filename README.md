@@ -1,32 +1,49 @@
-# React + TypeScript + Vite
+# OrderFlow — Logistics Marketplace & Smart Dispatch
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+OrderFlow is a commercial delivery marketplace connecting e-commerce merchants directly with verified logistics providers across Nigeria and emerging markets.
 
-Currently, two official plugins are available:
+For a comprehensive architectural breakdown and list of all implemented features, please refer to:
+**[FEATURES_AND_SYSTEM_OVERVIEW.md](./FEATURES_AND_SYSTEM_OVERVIEW.md)**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## Key Highlights
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Smart Dispatch Engine**: Automated driver matching based on vehicle capacity, coverage zones, and real-time availability.
+- **Fraud-Proof Delivery (POD)**: Recipient 4-digit verification PIN with optional courier photo upload.
+- **Flexible Payment Modes**: Built-in support for Cash on Delivery (COD), Pay at Pickup, and digital gateways (Interswitch, Paystack, Flutterwave).
+- **1-Click WhatsApp Sharing**: Instant customer notifications with pre-composed tracking details and deep links (`wa.me`).
+- **Realtime WebSockets**: Live order milestone sync and dispatch alerts with Web Audio synthetic chimes.
+- **PWA & Production Optimized**: Installable on Android & iOS, with code-splitting reducing initial JS bundle size by 92.5%.
+- **Regulatory Ready**: Integrated terms of service and privacy policies compliant with NDPR and GDPR.
 
-## Expanding the Oxlint configuration
+---
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## Quick Start
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+# Install dependencies
+npm install
+
+# Run automated tests
+npm test
+
+# Run strict type checking
+npm run typecheck
+
+# Run linter
+npm run lint
+
+# Build production bundle
+npm run build
+
+# Start local development server
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+---
+
+## Documentation
+
+- **Full Features & Architecture Overview**: [FEATURES_AND_SYSTEM_OVERVIEW.md](./FEATURES_AND_SYSTEM_OVERVIEW.md)
+- **Database Migrations & Schema**: [src/db/migrations/](./src/db/migrations/)
