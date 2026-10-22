@@ -58,6 +58,21 @@ export const VendorDashboardPage: React.FC = () => {
     };
   }, [user]);
 
+  // Realtime subscription for live delivery status updates & new requests
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const unsubscribe = deliveryService.subscribeToVendorDeliveries(user.id, () => {
+      deliveryService.getVendorDeliveries(user.id)
+        .then((updatedDeliveries) => setDeliveries(updatedDeliveries))
+        .catch((err) => console.warn('Realtime vendor update error:', err));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.id]);
+
   const handleRetry = () => {
     if (!user?.id) return;
     setIsLoading(true);

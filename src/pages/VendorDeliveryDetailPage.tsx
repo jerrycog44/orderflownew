@@ -1,8 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, MapPin, Truck, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Package,
+  MapPin,
+  Truck,
+  CheckCircle2,
+  AlertCircle,
+  MessageCircle,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldCheck,
+  Camera,
+} from 'lucide-react';
 import type { DeliveryRecord } from '../types';
 import { deliveryService } from '../services/deliveryService';
+import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../lib/whatsapp';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import './VendorDeliveryDetailPage.css';
@@ -21,6 +35,19 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(id));
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = async () => {
+    if (!delivery) return;
+    const url = getPublicTrackingUrl(delivery.trackingCode || delivery.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -42,6 +69,24 @@ export const VendorDeliveryDetailPage: React.FC = () => {
     }
     return () => {
       isMounted = false;
+    };
+  }, [id]);
+
+  // Realtime subscription for delivery status transitions
+  useEffect(() => {
+    if (!id) return;
+
+    const unsubscribe = deliveryService.subscribeToDelivery(id, () => {
+      deliveryService
+        .getDeliveryById(id)
+        .then((record) => {
+          if (record) setDelivery(record);
+        })
+        .catch((err) => console.warn('Realtime delivery detail update error:', err));
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, [id]);
 
@@ -210,6 +255,96 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         })}
       </div>
 
+      {/* Customer Tracking & WhatsApp Sharing Card */}
+      <div
+        style={{
+          background: 'var(--color-bg-surface)',
+          border: '1px solid var(--color-border-default)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 'var(--space-4) var(--space-5)',
+          marginBottom: 'var(--space-6)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 'var(--space-4)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: 'var(--radius-full)',
+              background: 'rgba(37, 211, 102, 0.12)',
+              color: '#25D366',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <MessageCircle size={22} />
+          </div>
+          <div>
+            <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-tertiary)', textTransform: 'uppercase' }}>
+              Customer Live Tracking
+            </span>
+            <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', fontWeight: 500 }}>
+              Share direct WhatsApp updates and tracking link with <strong>{delivery.recipient.name}</strong> ({delivery.recipient.phone})
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <a
+            href={getWhatsAppShareUrl(
+              delivery.recipient.phone,
+              generateTrackingWhatsAppMessage({
+                recipientName: delivery.recipient.name,
+                productName: delivery.productName,
+                trackingCode: delivery.trackingCode || delivery.id,
+                vendorName: delivery.vendorName,
+                estimatedDeliveryTime: delivery.estimatedDeliveryTime,
+                podVerificationCode: delivery.podVerificationCode,
+              })
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--space-2)',
+              backgroundColor: '#25D366',
+              color: '#FFFFFF',
+              padding: '8px 16px',
+              borderRadius: 'var(--radius-md)',
+              fontWeight: 600,
+              fontSize: 'var(--font-size-sm)',
+              textDecoration: 'none',
+              boxShadow: '0 2px 4px rgba(37, 211, 102, 0.2)',
+            }}
+          >
+            <MessageCircle size={16} />
+            Share on WhatsApp
+          </a>
+
+          <Button variant="outline" size="sm" onClick={handleCopyLink}>
+            {copied ? <Check size={14} style={{ marginRight: '6px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '6px' }} />}
+            {copied ? 'Link Copied!' : 'Copy Link'}
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.open(getPublicTrackingUrl(delivery.trackingCode || delivery.id), '_blank')}
+          >
+            <ExternalLink size={14} style={{ marginRight: '6px' }} />
+            Preview
+          </Button>
+        </div>
+      </div>
+
       {/* Main Grid Content */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-6)' }}>
         {/* Logistics Partner & Price */}
@@ -311,6 +446,105 @@ export const VendorDeliveryDetailPage: React.FC = () => {
               <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: '2px 0 0 0' }}>
                 Contact: {delivery.recipient.name} • {delivery.recipient.phone}
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment & Proof of Delivery (POD) Security Card */}
+        <div
+          style={{
+            background: 'var(--color-bg-surface)',
+            border: '1px solid var(--color-border-default)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-6)',
+          }}
+        >
+          <h2 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+            <ShieldCheck size={20} color="#10B981" />
+            Payment & Handover Security
+          </h2>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', fontSize: 'var(--font-size-sm)' }}>
+            {/* Payment Method & Status */}
+            <div>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Payment Method & Status
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '4px', flexWrap: 'wrap' }}>
+                <Badge variant={delivery.paymentStatus === 'collected' ? 'success' : 'warning'}>
+                  {delivery.paymentMethod === 'cash_on_delivery'
+                    ? 'Cash on Delivery'
+                    : delivery.paymentMethod === 'pay_at_pickup'
+                    ? 'Pay at Pickup'
+                    : 'Prepaid Online'}
+                </Badge>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                  {delivery.paymentStatus === 'collected'
+                    ? '• Fare Collected'
+                    : delivery.paymentStatus === 'remitted'
+                    ? '• Remitted to Vendor'
+                    : '• Pending Collection on Handover'}
+                </span>
+              </div>
+            </div>
+
+            {/* 4-Digit Handover PIN */}
+            <div>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Recipient Verification PIN
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: '4px' }}>
+                <span
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 'var(--font-size-xl)',
+                    fontWeight: 800,
+                    letterSpacing: '4px',
+                    color: '#059669',
+                    background: 'rgba(16, 185, 129, 0.1)',
+                    padding: '4px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                  }}
+                >
+                  {delivery.podVerificationCode || '----'}
+                </span>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                  Recipient shares this with the courier to complete delivery.
+                </span>
+              </div>
+            </div>
+
+            {/* Photo Proof Requirement / Proof Image */}
+            <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-3)' }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Camera size={14} /> Photo Proof Requirement
+              </span>
+              <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                {delivery.requirePhotoProof ? 'Mandatory courier photo upload enabled' : 'Standard PIN handover verification'}
+              </p>
+
+              {delivery.podPhotoUrl && (
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: '#10B981', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px' }}>
+                    <CheckCircle2 size={14} /> Verified Handover Photo Proof
+                  </span>
+                  <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border-default)', maxHeight: '160px' }}>
+                    <img
+                      src={delivery.podPhotoUrl}
+                      alt="Proof of delivery handover"
+                      style={{ width: '100%', height: '160px', objectFit: 'cover', cursor: 'pointer' }}
+                      onClick={() => window.open(delivery.podPhotoUrl, '_blank')}
+                      title="Click to view full photo"
+                    />
+                  </div>
+                  {delivery.podCompletedAt && (
+                    <span style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', marginTop: '4px', display: 'block' }}>
+                      Completed at {new Date(delivery.podCompletedAt).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

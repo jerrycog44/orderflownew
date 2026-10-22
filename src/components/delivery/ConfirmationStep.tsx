@@ -1,9 +1,24 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, MapPin, CheckCircle, ArrowLeft, AlertCircle } from 'lucide-react';
-import type { PackageDetails, LocationPoint, LogisticsProvider, DeliveryRecord } from '../../types';
+import {
+  Package,
+  MapPin,
+  CheckCircle,
+  ArrowLeft,
+  AlertCircle,
+  MessageCircle,
+  Copy,
+  Check,
+  CreditCard,
+  Banknote,
+  Camera,
+  ShieldCheck,
+  CheckCircle2,
+} from 'lucide-react';
+import type { PackageDetails, LocationPoint, LogisticsProvider, DeliveryRecord, PaymentMethod } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { deliveryService } from '../../services/deliveryService';
+import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../../lib/whatsapp';
 import { Button } from '../ui/Button';
 
 export interface ConfirmationStepProps {
@@ -30,9 +45,24 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash_on_delivery');
+  const [requirePhotoProof, setRequirePhotoProof] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createdDelivery, setCreatedDelivery] = useState<DeliveryRecord | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyTrackingLink = async () => {
+    if (!createdDelivery) return;
+    const url = getPublicTrackingUrl(createdDelivery.trackingCode || createdDelivery.id);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
 
   const handleConfirmDelivery = async () => {
     setIsSubmitting(true);
@@ -55,6 +85,9 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         status: isAuto ? 'opportunity_sent' : 'awaiting_pickup',
         estimatedPrice: selectedProvider ? selectedProvider.estimatedPrice : 3500,
         estimatedDeliveryTime: selectedProvider ? selectedProvider.estimatedDeliveryTime : 'Same Day Dispatch',
+        paymentMethod,
+        paymentStatus: paymentMethod === 'prepaid_online' ? 'collected' : 'pending',
+        requirePhotoProof,
       });
 
       setCreatedDelivery(newDelivery);
@@ -170,12 +203,86 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
+              Payment Method
+            </span>
+            <span style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              {createdDelivery.paymentMethod === 'cash_on_delivery'
+                ? 'Cash on Delivery (Pay on Handover)'
+                : createdDelivery.paymentMethod === 'pay_at_pickup'
+                ? 'Pay at Pickup'
+                : 'Prepaid Online'}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(16, 185, 129, 0.08)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: '#059669', fontWeight: 700, textTransform: 'uppercase' }}>
+              Handover PIN (POD)
+            </span>
+            <span style={{ fontFamily: 'monospace', fontWeight: 800, color: '#059669', fontSize: 'var(--font-size-lg)', letterSpacing: '3px' }}>
+              {createdDelivery.podVerificationCode || '----'}
+            </span>
+          </div>
+
+          {createdDelivery.requirePhotoProof && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+              <span>Handover Requirement</span>
+              <span style={{ fontWeight: 600, color: 'var(--color-brand-accent)' }}>Mandatory Photo Upload Required</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
               Total Price
             </span>
             <span style={{ fontWeight: 700, color: 'var(--color-brand-accent)' }}>
               ₦{createdDelivery.estimatedPrice.toLocaleString()}
             </span>
           </div>
+        </div>
+
+        {/* Customer Sharing Actions */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+          <a
+            href={getWhatsAppShareUrl(
+              createdDelivery.recipient.phone,
+              generateTrackingWhatsAppMessage({
+                recipientName: createdDelivery.recipient.name,
+                productName: createdDelivery.productName,
+                trackingCode: createdDelivery.trackingCode || createdDelivery.id,
+                vendorName: createdDelivery.vendorName,
+                estimatedDeliveryTime: createdDelivery.estimatedDeliveryTime,
+                podVerificationCode: createdDelivery.podVerificationCode,
+              })
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 'var(--space-2)',
+              backgroundColor: '#25D366',
+              color: '#FFFFFF',
+              padding: '12px var(--space-4)',
+              borderRadius: 'var(--radius-md)',
+              fontWeight: 600,
+              fontSize: 'var(--font-size-sm)',
+              textDecoration: 'none',
+              boxShadow: '0 2px 4px rgba(37, 211, 102, 0.2)',
+            }}
+          >
+            <MessageCircle size={18} />
+            Share Tracking & PIN on WhatsApp
+          </a>
+
+          <Button
+            variant="outline"
+            size="md"
+            onClick={handleCopyTrackingLink}
+          >
+            {copiedLink ? <Check size={16} style={{ marginRight: '6px', color: '#10B981' }} /> : <Copy size={16} style={{ marginRight: '6px' }} />}
+            {copiedLink ? 'Tracking Link Copied!' : 'Copy Public Tracking Link'}
+          </Button>
         </div>
 
         {/* Action CTAs */}
@@ -208,7 +315,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
           Step 5: Final Delivery Confirmation
         </h2>
         <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-          Please review your final order details before creating the delivery request.
+          Please review your delivery details, payment terms, and handover security settings.
         </p>
       </div>
 
@@ -316,6 +423,151 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-primary)', margin: '4px 0 0 0' }}>
               Recipient: <strong>{recipient.name}</strong> ({recipient.phone})
             </p>
+          </div>
+        </div>
+
+        {/* Section: Payment Method Selection */}
+        <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+            <Banknote size={18} color="var(--color-brand-accent)" />
+            <h3 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, textTransform: 'uppercase' }}>
+              Payment Method & Settlement
+            </h3>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
+            {/* Option 1: Cash on Delivery */}
+            <div
+              onClick={() => setPaymentMethod('cash_on_delivery')}
+              style={{
+                cursor: 'pointer',
+                border: paymentMethod === 'cash_on_delivery' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
+                background: paymentMethod === 'cash_on_delivery' ? 'var(--color-brand-accent-light)' : 'var(--color-bg-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Banknote size={16} /> Cash on Delivery
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#059669', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
+                  DEFAULT
+                </span>
+              </div>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Recipient pays the courier upon package handover via cash or direct bank transfer.
+              </p>
+            </div>
+
+            {/* Option 2: Pay at Pickup */}
+            <div
+              onClick={() => setPaymentMethod('pay_at_pickup')}
+              style={{
+                cursor: 'pointer',
+                border: paymentMethod === 'pay_at_pickup' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
+                background: paymentMethod === 'pay_at_pickup' ? 'var(--color-brand-accent-light)' : 'var(--color-bg-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Package size={16} /> Pay at Pickup
+                </span>
+              </div>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Vendor settles the delivery fee directly with the dispatch courier at pickup.
+              </p>
+            </div>
+
+            {/* Option 3: Online Gateway (Paystack / Flutterwave / Interswitch) */}
+            <div
+              onClick={() => setPaymentMethod('prepaid_online')}
+              style={{
+                cursor: 'pointer',
+                border: paymentMethod === 'prepaid_online' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
+                background: paymentMethod === 'prepaid_online' ? 'var(--color-brand-accent-light)' : 'var(--color-bg-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-1)',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CreditCard size={16} /> Digital Card / Gateway
+                </span>
+                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-tertiary)', background: 'var(--color-bg-surface)', padding: '2px 6px', borderRadius: '4px' }}>
+                  READY
+                </span>
+              </div>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                Interswitch WebPAY, Paystack & Flutterwave pre-authorization.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section: Proof of Delivery (POD) Security */}
+        <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+            <ShieldCheck size={18} color="#10B981" />
+            <h3 style={{ fontSize: 'var(--font-size-sm)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0, textTransform: 'uppercase' }}>
+              Proof of Delivery (POD) Security
+            </h3>
+          </div>
+
+          <div
+            style={{
+              background: 'rgba(16, 185, 129, 0.05)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              borderRadius: 'var(--radius-md)',
+              padding: 'var(--space-3) var(--space-4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--space-2)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+              <CheckCircle2 size={16} color="#10B981" style={{ marginTop: '2px', flexShrink: 0 }} />
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
+                <strong>4-Digit Recipient Handover PIN:</strong> A unique verification code is automatically generated for this order. The courier must obtain this code from the recipient to mark delivery complete.
+              </p>
+            </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-2)',
+                cursor: 'pointer',
+                marginTop: 'var(--space-1)',
+                paddingTop: 'var(--space-2)',
+                borderTop: '1px solid rgba(16, 185, 129, 0.15)',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={requirePhotoProof}
+                onChange={(e) => setRequirePhotoProof(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--color-brand-accent)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Camera size={14} color="var(--color-brand-accent)" />
+                Require courier photo upload proof upon package handover
+              </span>
+            </label>
           </div>
         </div>
       </div>

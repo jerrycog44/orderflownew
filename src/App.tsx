@@ -1,14 +1,16 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './styles/global.css';
 import { AuthProvider } from './auth/AuthContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ScrollToTop } from './components/layout/ScrollToTop';
+import { PageLoader } from './components/ui/PageLoader';
 
 // Layout Trees
 import { PublicLayout } from './components/layout/PublicLayout';
 import { AppLayout } from './components/layout/AppLayout';
 
-// Landing page sections
+// Landing page sections (eagerly loaded for instant first paint)
 import { HeroSection } from './components/sections/HeroSection';
 import { WhatsAppSection } from './components/sections/WhatsAppSection';
 import { HowItWorksSection } from './components/sections/HowItWorksSection';
@@ -16,24 +18,29 @@ import { LogisticsProviderSection } from './components/sections/LogisticsProvide
 import { TrustSection } from './components/sections/TrustSection';
 import { FinalCtaSection } from './components/sections/FinalCtaSection';
 
-// Auth pages
-import { LoginPage } from './pages/LoginPage';
-import { SignUpPage } from './pages/SignUpPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { RoleSelectionPage } from './pages/RoleSelectionPage';
+// Lazy-loaded Auth pages
+const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
+const SignUpPage = lazy(() => import('./pages/SignUpPage').then(m => ({ default: m.SignUpPage })));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage').then(m => ({ default: m.ForgotPasswordPage })));
+const RoleSelectionPage = lazy(() => import('./pages/RoleSelectionPage').then(m => ({ default: m.RoleSelectionPage })));
 
-// Onboarding pages
-import { VendorOnboardingPage } from './pages/VendorOnboardingPage';
-import { ProviderOnboardingPage } from './pages/ProviderOnboardingPage';
+// Lazy-loaded Onboarding pages
+const VendorOnboardingPage = lazy(() => import('./pages/VendorOnboardingPage').then(m => ({ default: m.VendorOnboardingPage })));
+const ProviderOnboardingPage = lazy(() => import('./pages/ProviderOnboardingPage').then(m => ({ default: m.ProviderOnboardingPage })));
 
-// Dashboards
-import { VendorDashboardPage } from './pages/VendorDashboardPage';
-import { ProviderDashboardPage } from './pages/ProviderDashboardPage';
+// Lazy-loaded Dashboards
+const VendorDashboardPage = lazy(() => import('./pages/VendorDashboardPage').then(m => ({ default: m.VendorDashboardPage })));
+const ProviderDashboardPage = lazy(() => import('./pages/ProviderDashboardPage').then(m => ({ default: m.ProviderDashboardPage })));
 
-// Phase 3 & 4 Delivery Pages
-import { CreateDeliveryPage } from './pages/CreateDeliveryPage';
-import { VendorDeliveryDetailPage } from './pages/VendorDeliveryDetailPage';
-import { CustomerTrackingPage } from './pages/CustomerTrackingPage';
+// Lazy-loaded Delivery Pages
+const CreateDeliveryPage = lazy(() => import('./pages/CreateDeliveryPage').then(m => ({ default: m.CreateDeliveryPage })));
+const VendorDeliveryDetailPage = lazy(() => import('./pages/VendorDeliveryDetailPage').then(m => ({ default: m.VendorDeliveryDetailPage })));
+const CustomerTrackingPage = lazy(() => import('./pages/CustomerTrackingPage').then(m => ({ default: m.CustomerTrackingPage })));
+
+// Lazy-loaded Legal & Error Pages
+const TermsPage = lazy(() => import('./pages/TermsPage').then(m => ({ default: m.TermsPage })));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
 
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 
@@ -43,7 +50,8 @@ export function App() {
       <ToastProvider>
         <Router>
           <ScrollToTop />
-          <Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
             {/* 1. PUBLIC MARKETING SITE LAYOUT (Navbar + Content + Footer) */}
             <Route element={<PublicLayout />}>
               <Route
@@ -61,6 +69,8 @@ export function App() {
               />
               <Route path="/track" element={<CustomerTrackingPage />} />
               <Route path="/track/:trackingCode" element={<CustomerTrackingPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
             </Route>
 
             {/* 2. AUTHENTICATION FLOW (Clean Auth Shell, NO marketing Navbar/Footer) */}
@@ -160,10 +170,12 @@ export function App() {
               />
             </Route>
 
-            {/* Fallback */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* Fallback & 404 */}
+            <Route path="/404" element={<NotFoundPage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
-        </Router>
+        </Suspense>
+      </Router>
       </ToastProvider>
     </AuthProvider>
   );

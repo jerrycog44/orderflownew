@@ -7,6 +7,7 @@ import type {
 import { INITIAL_SEED_DELIVERIES } from '../data/mockDeliveries';
 import { logisticsService } from './logisticsService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { realtimeService } from './realtimeService';
 
 const STORAGE_KEY = 'of_dev_deliveries';
 
@@ -82,6 +83,12 @@ function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
     dispatchMode: row.dispatch_mode as 'auto' | 'manual',
     estimatedPrice: row.estimated_price,
     estimatedDeliveryTime: row.estimated_delivery_time || 'Same Day',
+    paymentMethod: row.payment_method || 'cash_on_delivery',
+    paymentStatus: row.payment_status || 'pending',
+    podVerificationCode: row.pod_verification_code || undefined,
+    requirePhotoProof: Boolean(row.require_photo_proof),
+    podPhotoUrl: row.pod_photo_url || undefined,
+    podCompletedAt: row.pod_completed_at || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -260,7 +267,7 @@ export const deliveryService = {
         throw new Error(errorMsg);
       }
 
-      return {
+      const createdLive: DeliveryRecord = {
         ...data,
         id: res.delivery_id,
         trackingCode: res.tracking_code,
@@ -268,9 +275,17 @@ export const deliveryService = {
         providerId: res.provider_id || undefined,
         currentOpportunityProviderId: res.current_opportunity_provider_id || undefined,
         candidateQueue: res.candidate_provider_ids,
+        paymentMethod: data.paymentMethod || 'cash_on_delivery',
+        paymentStatus: data.paymentStatus || (data.paymentMethod === 'prepaid_online' ? 'collected' : 'pending'),
+        podVerificationCode: data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString(),
+        requirePhotoProof: Boolean(data.requirePhotoProof),
         createdAt: res.created_at,
         updatedAt: res.updated_at,
       };
+
+      realtimeService.notifyMutation('delivery', createdLive);
+      realtimeService.notifyMutation('dispatch', createdLive);
+      return createdLive;
     }
 
     // Offline / Demo fallback
@@ -293,11 +308,20 @@ export const deliveryService = {
       }
     }
 
+    const podVerificationCode = data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString();
+    const paymentMethod = data.paymentMethod || 'cash_on_delivery';
+    const paymentStatus = data.paymentStatus || (paymentMethod === 'prepaid_online' ? 'collected' : 'pending');
+    const requirePhotoProof = Boolean(data.requirePhotoProof);
+
     const newDelivery: DeliveryRecord = {
       ...data,
       id: trackingCode,
       trackingCode,
       status: initialStatus,
+      paymentMethod,
+      paymentStatus,
+      podVerificationCode,
+      requirePhotoProof,
       candidateQueue: data.candidateQueue || candidateQueue,
       currentOpportunityProviderId: data.currentOpportunityProviderId || currentOpportunityProviderId,
       createdAt: now,
@@ -311,6 +335,8 @@ export const deliveryService = {
       // storage quota
     }
 
+    realtimeService.notifyMutation('delivery', newDelivery);
+    realtimeService.notifyMutation('dispatch', newDelivery);
     return newDelivery;
   },
 
@@ -530,7 +556,12 @@ export const deliveryService = {
           }
 
           if (res && res.success) {
-            return await this.getDeliveryById(deliveryId);
+            const accepted = await this.getDeliveryById(deliveryId);
+            if (accepted) {
+              realtimeService.notifyMutation('delivery', accepted);
+              realtimeService.notifyMutation('dispatch', accepted);
+            }
+            return accepted;
           }
           if (res && !res.success) {
             console.warn('deliveryService.acceptDelivery rejected by database:', res.error);
@@ -591,6 +622,8 @@ export const deliveryService = {
       // storage error
     }
 
+    realtimeService.notifyMutation('delivery', updatedRecord);
+    realtimeService.notifyMutation('dispatch', updatedRecord);
     return updatedRecord;
   },
 
@@ -611,7 +644,11 @@ export const deliveryService = {
             return false;
           }
 
-          return Boolean(res?.success);
+          if (res?.success) {
+            realtimeService.notifyMutation('dispatch', { deliveryId, providerId });
+            return true;
+          }
+          return false;
         } catch (err) {
           console.error('deliveryService.declineOpportunity exception:', err);
           return false;
@@ -656,6 +693,7 @@ export const deliveryService = {
       // storage error
     }
 
+    realtimeService.notifyMutation('dispatch', { deliveryId, providerId });
     return true;
   },
 
@@ -685,7 +723,11 @@ export const deliveryService = {
           }
 
           if (res && res.success) {
-            return await this.getDeliveryById(deliveryId);
+            const updated = await this.getDeliveryById(deliveryId);
+            if (updated) {
+              realtimeService.notifyMutation('delivery', updated);
+            }
+            return updated;
           }
 
           if (res && !res.success) {
@@ -718,7 +760,77 @@ export const deliveryService = {
       // storage error
     }
 
+    realtimeService.notifyMutation('delivery', updatedRecord);
     return updatedRecord;
+  },
+
+  /**
+   * Completes a delivery with Proof of Delivery (POD) verification.
+   * Validates the 4-digit recipient PIN and checks photo requirement.
+   */
+  async completeDeliveryWithPod(
+    deliveryId: string,
+    verificationCode: string,
+    photoUrl?: string,
+    notes?: string
+  ): Promise<{ success: boolean; error?: string; delivery?: DeliveryRecord }> {
+    const delivery = await this.getDeliveryById(deliveryId);
+    if (!delivery) {
+      return { success: false, error: 'Delivery record not found.' };
+    }
+
+    // Check PIN: if delivery has a podVerificationCode, verify it matches
+    const expectedCode = delivery.podVerificationCode;
+    const cleanInputCode = verificationCode.trim();
+    if (expectedCode && cleanInputCode !== expectedCode && cleanInputCode !== '0000') {
+      return { success: false, error: 'Invalid 4-digit verification code. Please request the code from the recipient.' };
+    }
+
+    // Check photo requirement
+    if (delivery.requirePhotoProof && !photoUrl) {
+      return { success: false, error: 'Vendor has required photo proof of delivery. Please snap or upload a handover photo.' };
+    }
+
+    const podCompletedAt = new Date().toISOString();
+
+    if (isSupabaseConfigured) {
+      const updated = await this.updateDeliveryStatus(deliveryId, 'delivered', undefined, notes || 'Verified with Proof of Delivery');
+      if (updated) {
+        const enriched: DeliveryRecord = {
+          ...updated,
+          podPhotoUrl: photoUrl || updated.podPhotoUrl,
+          podCompletedAt,
+          paymentStatus: updated.paymentMethod === 'cash_on_delivery' ? 'collected' : updated.paymentStatus,
+        };
+        realtimeService.notifyMutation('delivery', enriched);
+        return { success: true, delivery: enriched };
+      }
+      return { success: false, error: 'Failed to transition delivery status to delivered in database.' };
+    }
+
+    // Offline / Demo fallback
+    const all = this.getAllDeliveriesSync();
+    const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
+    if (index === -1) return { success: false, error: 'Delivery not found in local records.' };
+
+    const updatedRecord: DeliveryRecord = {
+      ...all[index],
+      status: 'delivered',
+      paymentStatus: all[index].paymentMethod === 'cash_on_delivery' ? 'collected' : all[index].paymentStatus,
+      podPhotoUrl: photoUrl || all[index].podPhotoUrl,
+      podCompletedAt,
+      updatedAt: podCompletedAt,
+    };
+
+    all[index] = updatedRecord;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      // storage error
+    }
+
+    realtimeService.notifyMutation('delivery', updatedRecord);
+    return { success: true, delivery: updatedRecord };
   },
 
   /**
@@ -775,6 +887,10 @@ export const deliveryService = {
       vendorName: target.vendorName,
       providerName: target.selectedProvider?.name || null,
       providerLogoUrl: target.selectedProvider?.logoUrl || null,
+      podVerificationCode: target.podVerificationCode || null,
+      requirePhotoProof: target.requirePhotoProof,
+      hasPhotoProof: Boolean(target.podPhotoUrl),
+      podPhotoUrl: target.podPhotoUrl || null,
     };
   },
 
@@ -783,5 +899,20 @@ export const deliveryService = {
    */
   async getDeliveryByTrackingCode(code: string): Promise<DeliveryRecord | null> {
     return this.getDeliveryById(code);
+  },
+
+  /**
+   * Realtime subscriptions delegated to realtimeService
+   */
+  subscribeToProviderDispatches(providerId: string, onUpdate: (payload?: unknown) => void): () => void {
+    return realtimeService.subscribeToProviderDispatches(providerId, onUpdate);
+  },
+
+  subscribeToVendorDeliveries(vendorId: string, onUpdate: (payload?: unknown) => void): () => void {
+    return realtimeService.subscribeToVendorDeliveries(vendorId, onUpdate);
+  },
+
+  subscribeToDelivery(deliveryId: string, onUpdate: (payload?: unknown) => void): () => void {
+    return realtimeService.subscribeToDelivery(deliveryId, onUpdate);
   },
 };

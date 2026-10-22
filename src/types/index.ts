@@ -104,6 +104,20 @@ export interface LogisticsProvider {
   recommendationReason?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Payment & Proof of Delivery (POD) Models
+// ---------------------------------------------------------------------------
+
+export type PaymentMethod = 'cash_on_delivery' | 'pay_at_pickup' | 'prepaid_online';
+export type PaymentStatus = 'pending' | 'collected' | 'remitted';
+
+export interface ProofOfDeliveryDetails {
+  verificationCode: string;
+  requirePhotoProof: boolean;
+  photoUrl?: string;
+  completedAt?: string;
+}
+
 /**
  * DeliveryRecord represents a complete delivery request throughout its lifecycle.
  */
@@ -135,6 +149,12 @@ export interface DeliveryRecord {
   };
   estimatedPrice: number;
   estimatedDeliveryTime: string;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: PaymentStatus;
+  podVerificationCode?: string;
+  requirePhotoProof?: boolean;
+  podPhotoUrl?: string;
+  podCompletedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -156,6 +176,10 @@ export interface PublicTrackingInfo {
   vendorName: string;
   providerName: string | null;
   providerLogoUrl: string | null;
+  podVerificationCode?: string | null;
+  requirePhotoProof?: boolean;
+  hasPhotoProof?: boolean;
+  podPhotoUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------

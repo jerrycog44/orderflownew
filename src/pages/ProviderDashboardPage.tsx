@@ -1,6 +1,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, MapPin, Navigation, CheckCircle2, PackageCheck, Phone, User as UserIcon, XCircle, AlertCircle, Clock } from 'lucide-react';
+import {
+  Truck,
+  LogOut,
+  MapPin,
+  Navigation,
+  CheckCircle2,
+  PackageCheck,
+  Phone,
+  User as UserIcon,
+  XCircle,
+  AlertCircle,
+  Clock,
+  Camera,
+  ShieldCheck,
+  Banknote,
+  Upload,
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { logisticsService } from '../services/logisticsService';
@@ -18,6 +34,13 @@ export const ProviderDashboardPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'opportunities' | 'assigned'>('opportunities');
   const [selectedJob, setSelectedJob] = useState<DeliveryRecord | null>(null);
+
+  // Proof of Delivery (POD) modal state
+  const [podModalJob, setPodModalJob] = useState<DeliveryRecord | null>(null);
+  const [podPin, setPodPin] = useState('');
+  const [podPhoto, setPodPhoto] = useState<string | undefined>(undefined);
+  const [podError, setPodError] = useState<string | null>(null);
+  const [isVerifyingPod, setIsVerifyingPod] = useState(false);
 
   const providerId = user?.id || 'prov_swifthaul';
 
@@ -79,6 +102,19 @@ export const ProviderDashboardPage: React.FC = () => {
       isMounted = false;
     };
   }, [providerId, refreshData]);
+
+  // Realtime subscription for incoming dispatch opportunities & assigned deliveries
+  useEffect(() => {
+    if (!providerId) return;
+
+    const unsubscribe = deliveryService.subscribeToProviderDispatches(providerId, () => {
+      refreshData(profile?.coverageArea);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [providerId, profile?.coverageArea, refreshData]);
 
   const handleAvailabilityChange = async (newStatus: ProviderAvailability) => {
     setAvailability(newStatus);
@@ -151,6 +187,70 @@ export const ProviderDashboardPage: React.FC = () => {
         description: `Unable to transition delivery ${jobId} to ${newStatus}. Please verify your permissions or try again.`,
         type: 'error',
       });
+    }
+  };
+
+  const handleInitiateDeliveryCompletion = (job: DeliveryRecord) => {
+    setPodModalJob(job);
+    setPodPin('');
+    setPodPhoto(undefined);
+    setPodError(null);
+  };
+
+  const handlePodPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPodPhoto(reader.result);
+        setPodError(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmPodDelivery = async () => {
+    if (!podModalJob) return;
+    if (!podPin.trim()) {
+      setPodError('Please enter the 4-digit verification code provided by the customer.');
+      return;
+    }
+    if (podModalJob.requirePhotoProof && !podPhoto) {
+      setPodError('Vendor has required photo proof of delivery. Please snap or upload a handover photo.');
+      return;
+    }
+
+    setIsVerifyingPod(true);
+    setPodError(null);
+
+    try {
+      const res = await deliveryService.completeDeliveryWithPod(
+        podModalJob.id,
+        podPin.trim(),
+        podPhoto
+      );
+
+      if (res.success) {
+        addToast({
+          title: 'Delivery Confirmed & Verified',
+          description: `Order ${podModalJob.trackingCode || podModalJob.id} marked delivered.${
+            podModalJob.paymentMethod === 'cash_on_delivery' ? ' Cash on Delivery collected.' : ''
+          }`,
+          type: 'success',
+        });
+        setPodModalJob(null);
+        setPodPin('');
+        setPodPhoto(undefined);
+        await refreshData(profile?.coverageArea);
+      } else {
+        setPodError(res.error || 'Failed to verify Proof of Delivery.');
+      }
+    } catch (err) {
+      console.error('Error completing delivery with POD:', err);
+      setPodError(err instanceof Error ? err.message : 'Failed to complete delivery.');
+    } finally {
+      setIsVerifyingPod(false);
     }
   };
 
@@ -661,6 +761,49 @@ export const ProviderDashboardPage: React.FC = () => {
                         </div>
                       </div>
 
+                      {/* Payment & POD Requirements Badges */}
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: job.paymentMethod === 'cash_on_delivery' ? 'rgba(245, 158, 11, 0.12)' : 'var(--color-bg-surface)',
+                            color: job.paymentMethod === 'cash_on_delivery' ? '#D97706' : 'var(--color-text-secondary)',
+                            border: '1px solid var(--color-border-subtle)',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Banknote size={12} />
+                          {job.paymentMethod === 'cash_on_delivery'
+                            ? `COD: ₦${job.estimatedPrice.toLocaleString()}`
+                            : job.paymentMethod === 'pay_at_pickup'
+                            ? 'Pay at Pickup'
+                            : 'Prepaid Online'}
+                        </span>
+                        {job.requirePhotoProof && (
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '2px 8px',
+                              borderRadius: 'var(--radius-sm)',
+                              background: 'rgba(59, 130, 246, 0.1)',
+                              color: '#2563EB',
+                              border: '1px solid rgba(59, 130, 246, 0.2)',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                            }}
+                          >
+                            <Camera size={12} /> Photo Proof Required
+                          </span>
+                        )}
+                      </div>
+
                       <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
                         {job.status !== 'in_transit' && job.status !== 'delivered' && (
                           <Button
@@ -676,7 +819,7 @@ export const ProviderDashboardPage: React.FC = () => {
                           <Button
                             variant="primary"
                             size="sm"
-                            onClick={() => handleUpdateStatus(job.id, 'delivered')}
+                            onClick={() => handleInitiateDeliveryCompletion(job)}
                             leftIcon={<CheckCircle2 size={14} />}
                           >
                             Mark Delivered
@@ -803,6 +946,226 @@ export const ProviderDashboardPage: React.FC = () => {
                   Accept Dispatch
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Proof of Delivery (POD) Handover Verification */}
+      <Modal
+        isOpen={!!podModalJob}
+        onClose={() => {
+          if (!isVerifyingPod) {
+            setPodModalJob(null);
+            setPodPin('');
+            setPodPhoto(undefined);
+            setPodError(null);
+          }
+        }}
+        title={`Proof of Delivery — ${podModalJob?.trackingCode || podModalJob?.id}`}
+        maxWidth="md"
+      >
+        {podModalJob && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+            {/* Delivery Info */}
+            <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-brand-accent)', textTransform: 'uppercase' }}>
+                  Handover Verification
+                </span>
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
+                  Vendor: <strong>{podModalJob.vendorName}</strong>
+                </span>
+              </div>
+              <h4 style={{ margin: '0 0 2px 0', fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                {podModalJob.productName}
+              </h4>
+              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                Dropoff: {podModalJob.destination.address}, {podModalJob.destination.city} • Recipient: <strong>{podModalJob.recipient.name}</strong> ({podModalJob.recipient.phone})
+              </p>
+            </div>
+
+            {/* Payment Collection Prompt */}
+            {podModalJob.paymentMethod === 'cash_on_delivery' ? (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-3)',
+                }}
+              >
+                <Banknote size={24} color="#D97706" style={{ flexShrink: 0 }} />
+                <div>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#D97706', textTransform: 'uppercase' }}>
+                    Cash on Delivery Collection Required
+                  </span>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    Collect ₦{podModalJob.estimatedPrice.toLocaleString()} from customer in cash or instant transfer before handing over the item.
+                  </p>
+                </div>
+              </div>
+            ) : podModalJob.paymentMethod === 'pay_at_pickup' ? (
+              <div
+                style={{
+                  background: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.2)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <strong>Pay at Pickup:</strong> Delivery fare was settled with the vendor at dispatch. Do not collect from the recipient.
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-3) var(--space-4)',
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-text-secondary)',
+                }}
+              >
+                <strong>Prepaid Online:</strong> Order paid digitally. No payment collection required from the recipient.
+              </div>
+            )}
+
+            {/* 4-Digit Code Input */}
+            <div>
+              <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
+                4-Digit Recipient Handover Code <span style={{ color: '#DC2626' }}>*</span>
+              </label>
+              <input
+                type="text"
+                maxLength={4}
+                placeholder="4-digit PIN (e.g. 4892)"
+                value={podPin}
+                onChange={(e) => {
+                  setPodPin(e.target.value.replace(/\D/g, ''));
+                  setPodError(null);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '12px var(--space-4)',
+                  fontSize: 'var(--font-size-xl)',
+                  fontFamily: 'monospace',
+                  letterSpacing: '6px',
+                  textAlign: 'center',
+                  fontWeight: 700,
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--color-border-default)',
+                  background: 'var(--color-bg-surface)',
+                  color: 'var(--color-text-primary)',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+              <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
+                Ask the recipient for their 4-digit code (found on their OrderFlow tracking link / WhatsApp notification).
+              </p>
+            </div>
+
+            {/* Photo Proof Upload */}
+            <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Camera size={14} color="var(--color-brand-accent)" />
+                  Handover Photo Proof {podModalJob.requirePhotoProof ? <span style={{ color: '#DC2626' }}>* (Required by Vendor)</span> : <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>(Optional)</span>}
+                </label>
+                {podPhoto && (
+                  <button
+                    type="button"
+                    onClick={() => setPodPhoto(undefined)}
+                    style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 'var(--font-size-xs)', cursor: 'pointer', padding: 0 }}
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
+
+              {podPhoto ? (
+                <div style={{ position: 'relative', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border-default)', maxHeight: '180px' }}>
+                  <img src={podPhoto} alt="Proof of delivery preview" style={{ width: '100%', height: '180px', objectFit: 'cover' }} />
+                </div>
+              ) : (
+                <label
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-4)',
+                    border: '2px dashed var(--color-border-default)',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer',
+                    background: 'var(--color-bg-subtle)',
+                    textAlign: 'center',
+                  }}
+                >
+                  <Upload size={20} color="var(--color-text-tertiary)" />
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                    Click to capture handover photo or upload image
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    onChange={handlePodPhotoUpload}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {podError && (
+              <div
+                style={{
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-3)',
+                  color: '#DC2626',
+                  fontSize: 'var(--font-size-xs)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                }}
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{podError}</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-default)' }}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPodModalJob(null);
+                  setPodPin('');
+                  setPodPhoto(undefined);
+                  setPodError(null);
+                }}
+                disabled={isVerifyingPod}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleConfirmPodDelivery}
+                isLoading={isVerifyingPod}
+                leftIcon={<ShieldCheck size={16} />}
+              >
+                Verify & Complete Handover
+              </Button>
             </div>
           </div>
         )}

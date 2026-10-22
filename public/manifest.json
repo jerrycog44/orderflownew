@@ -1,0 +1,71 @@
+{
+  "name": "OrderFlow — Logistics Marketplace",
+  "short_name": "OrderFlow",
+  "description": "Commercial logistics marketplace connecting vendors directly with verified delivery providers. Create requests, compare rates, and track orders in real-time.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "logistics", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Track Package",
+      "short_name": "Track",
+      "description": "Track your OrderFlow delivery in real-time",
+      "url": "/track",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    },
+    {
+      "name": "Create Delivery Request",
+      "short_name": "New Order",
+      "description": "Create a new shipment and find courier partners",
+      "url": "/vendor/deliveries/create",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    },
+    {
+      "name": "Logistics Opportunities",
+      "short_name": "Opportunities",
+      "description": "View open delivery dispatch opportunities",
+      "url": "/logistics/dashboard",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "any"
+        }
+      ]
+    }
+  ]
+}

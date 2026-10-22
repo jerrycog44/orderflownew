@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft, Copy, Check, Key, Camera } from 'lucide-react';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -42,6 +42,17 @@ export const CustomerTrackingPage: React.FC = () => {
   const [trackingInfo, setTrackingInfo] = useState<PublicTrackingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searched, setSearched] = useState(Boolean(trackingCode));
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -72,6 +83,23 @@ export const CustomerTrackingPage: React.FC = () => {
 
     return () => {
       isMounted = false;
+    };
+  }, [trackingCode]);
+
+  // Realtime subscription for customer package tracking progression
+  useEffect(() => {
+    if (!trackingCode) return;
+
+    const unsubscribe = deliveryService.subscribeToDelivery(trackingCode, () => {
+      deliveryService.getPublicTracking(trackingCode)
+        .then((info) => {
+          if (info) setTrackingInfo(info);
+        })
+        .catch((err) => console.warn('Realtime tracking update error:', err));
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, [trackingCode]);
 
@@ -144,7 +172,7 @@ export const CustomerTrackingPage: React.FC = () => {
               </span>
             </div>
 
-            <div style={{ textAlign: 'right' }}>
+            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 'var(--space-2)' }}>
               <Badge
                 variant={
                   trackingInfo.status === 'delivered'
@@ -160,9 +188,11 @@ export const CustomerTrackingPage: React.FC = () => {
                   ? 'Dispatching'
                   : trackingInfo.status.replace(/_/g, ' ').toUpperCase()}
               </Badge>
-              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)', margin: '4px 0 0 0' }}>
-                Est. Delivery: <strong>{trackingInfo.estimatedDeliveryTime || 'Same Day'}</strong>
-              </p>
+
+              <Button variant="outline" size="sm" onClick={handleCopyLink}>
+                {copied ? <Check size={14} style={{ marginRight: '4px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '4px' }} />}
+                {copied ? 'Link Copied' : 'Share Link'}
+              </Button>
             </div>
           </div>
 
@@ -190,6 +220,109 @@ export const CustomerTrackingPage: React.FC = () => {
               );
             })}
           </div>
+
+          {/* Proof of Delivery (POD) Handover Section for Recipient */}
+          {trackingInfo.status !== 'delivered' && trackingInfo.podVerificationCode && (
+            <div
+              style={{
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                margin: 'var(--space-6) 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    color: '#059669',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Key size={20} />
+                </div>
+                <div>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#059669', textTransform: 'uppercase' }}>
+                    Your Handover Verification PIN
+                  </span>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                    Share this 4-digit code with the courier only when receiving your package to verify handover.
+                  </p>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 'var(--font-size-2xl)',
+                  fontWeight: 800,
+                  letterSpacing: '6px',
+                  color: '#059669',
+                  background: 'var(--color-bg-surface)',
+                  padding: '6px 16px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                }}
+              >
+                {trackingInfo.podVerificationCode}
+              </div>
+            </div>
+          )}
+
+          {trackingInfo.status === 'delivered' && (
+            <div
+              style={{
+                background: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                margin: 'var(--space-6) 0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <CheckCircle2 size={20} color="#10B981" />
+                <div>
+                  <strong style={{ fontSize: 'var(--font-size-sm)', color: '#059669' }}>
+                    Delivery Handover Completed & Verified
+                  </strong>
+                  <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                    This package has been successfully delivered and confirmed with the 4-digit handover PIN.
+                  </p>
+                </div>
+              </div>
+
+              {trackingInfo.podPhotoUrl && (
+                <div style={{ borderTop: '1px solid rgba(16, 185, 129, 0.2)', paddingTop: 'var(--space-3)' }}>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    <Camera size={14} /> Proof of Delivery Photo
+                  </span>
+                  <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border-default)', maxWidth: '320px', maxHeight: '200px' }}>
+                    <img
+                      src={trackingInfo.podPhotoUrl}
+                      alt="Handover proof"
+                      style={{ width: '100%', height: '200px', objectFit: 'cover' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Details Grid (Sanitized - no recipient phone or private street address) */}
           <div className="tracking-info-grid">
