@@ -326,7 +326,11 @@ export const VendorDashboardPage: React.FC = () => {
                         </span>
                       </div>
                       <span className="of-delivery-sub-info">
-                        {delivery.pickup.city} → {delivery.destination.city} • Partner:{' '}
+                        {delivery.pickup.city} → {delivery.destination.city} •{' '}
+                        <span style={{ fontWeight: 600, color: delivery.paymentMethod === 'cash_on_delivery' ? '#D97706' : 'var(--color-text-secondary)' }}>
+                          {delivery.paymentMethod === 'cash_on_delivery' ? 'COD' : delivery.paymentMethod === 'pay_at_pickup' ? 'Pay at Pickup' : 'Prepaid'}
+                        </span>
+                        {' '}• Partner:{' '}
                         <strong style={{ color: 'var(--color-text-primary)' }}>
                           {delivery.selectedProvider?.name
                             ? delivery.selectedProvider.name

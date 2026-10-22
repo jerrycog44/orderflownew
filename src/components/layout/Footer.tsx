@@ -54,6 +54,7 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="of-footer-col">
               <h4 className="of-footer-heading">Product</h4>
               <ul className="of-footer-list">
+                <li><Link to="/track">Track Package</Link></li>
                 <li><a href="#how-it-works">How It Works</a></li>
                 <li><button onClick={handleVendorClick} className="of-footer-btn-link">Create Delivery</button></li>
                 <li><a href="#value-proposition">Vendor Benefits</a></li>

@@ -312,7 +312,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div style={{ textAlign: 'center', marginBottom: 'var(--space-2)' }}>
         <h2 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-          Step 5: Final Delivery Confirmation
+          Final Delivery Confirmation & Dispatch
         </h2>
         <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
           Please review your delivery details, payment terms, and handover security settings.
