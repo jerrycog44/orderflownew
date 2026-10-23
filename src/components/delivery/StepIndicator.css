@@ -31,7 +31,7 @@
   border-radius: var(--radius-full);
   border: 1.5px solid var(--color-border-strong);
   background-color: var(--color-bg-surface);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   display: flex;
@@ -56,7 +56,7 @@
 .of-step-label {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   display: none;
 }
 

@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Truck,
-  LogOut,
   MapPin,
   Navigation,
   CheckCircle2,
@@ -28,8 +26,7 @@ import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus, Provider
 import './ProviderDashboardPage.css';
 
 export const ProviderDashboardPage: React.FC = () => {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const { addToast } = useToast();
 
   const [activeTab, setActiveTab] = useState<'opportunities' | 'assigned'>('opportunities');
@@ -59,7 +56,7 @@ export const ProviderDashboardPage: React.FC = () => {
       setRefreshError(null);
       const [targeted, opps, assigned] = await Promise.all([
         deliveryService.getProviderTargetedOpportunity(providerId),
-        deliveryService.getProviderOpportunities(coverageArea),
+        deliveryService.getProviderOpportunities(coverageArea, providerId),
         deliveryService.getProviderAssignedDeliveries(providerId),
       ]);
       setTargetedOpportunity(targeted);
@@ -115,6 +112,23 @@ export const ProviderDashboardPage: React.FC = () => {
       unsubscribe();
     };
   }, [providerId, profile?.coverageArea, refreshData]);
+
+  // Listen for workspace profile updates from AppLayout settings modal
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleProfileUpdated = () => {
+      logisticsService.getProviderProfile(user.id)
+        .then((prof) => {
+          if (prof) {
+            setProfile(prof);
+            refreshData(prof.coverageArea);
+          }
+        })
+        .catch((err) => console.warn('Failed to refresh provider profile:', err));
+    };
+    window.addEventListener('of:profile-updated', handleProfileUpdated);
+    return () => window.removeEventListener('of:profile-updated', handleProfileUpdated);
+  }, [user?.id, refreshData]);
 
   const handleAvailabilityChange = async (newStatus: ProviderAvailability) => {
     setAvailability(newStatus);
@@ -254,11 +268,6 @@ export const ProviderDashboardPage: React.FC = () => {
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
   return (
     <div className="of-provider-dashboard">
       {/* Top Banner Header */}
@@ -277,9 +286,8 @@ export const ProviderDashboardPage: React.FC = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
             <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              Logistics Provider Dashboard
+              Fleet Operations
             </h1>
-            <Badge variant="brand">Logistics Provider</Badge>
           </div>
           <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
             Welcome back, <strong>{providerName}</strong>. Manage your dispatches and real-time fleet availability.
@@ -364,11 +372,6 @@ export const ProviderDashboardPage: React.FC = () => {
               Offline
             </button>
           </div>
-
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut size={16} style={{ marginRight: '6px' }} />
-            Sign out
-          </Button>
         </div>
       </div>
 

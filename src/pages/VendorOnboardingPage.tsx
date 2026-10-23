@@ -76,7 +76,7 @@ export const VendorOnboardingPage: React.FC = () => {
         <Input
           label="Business name"
           type="text"
-          placeholder="Acme Corp"
+          placeholder="e.g. Apex Luxury & Retail"
           value={formData.businessName}
           onChange={e => handleChange('businessName', e.target.value)}
           error={errors.businessName}
@@ -85,7 +85,7 @@ export const VendorOnboardingPage: React.FC = () => {
         <Input
           label="Category"
           type="text"
-          placeholder="Retail, Electronics, Food …"
+          placeholder="e.g. Fashion & Apparel, Electronics, Food"
           value={formData.businessCategory}
           onChange={e => handleChange('businessCategory', e.target.value)}
           error={errors.businessCategory}
@@ -93,13 +93,13 @@ export const VendorOnboardingPage: React.FC = () => {
         <Input
           label="Operating city"
           type="text"
-          placeholder="San Francisco, CA"
+          placeholder="e.g. Ibadan, Lagos, Abuja, Port Harcourt"
           value={formData.operatingCity}
           onChange={e => handleChange('operatingCity', e.target.value)}
           error={errors.operatingCity}
         />
         <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
-          Finish onboarding
+          Finish Onboarding
         </Button>
       </form>
     </AuthLayout>

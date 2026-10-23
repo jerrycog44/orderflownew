@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, LogOut, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search, AlertCircle } from 'lucide-react';
+import { Plus, Package, Truck, Clock, CheckCircle2, Building, ChevronRight, Search, AlertCircle } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { logisticsService } from '../services/logisticsService';
@@ -10,7 +10,7 @@ import type { VendorProfile, DeliveryRecord } from '../types';
 import './VendorDashboardPage.css';
 
 export const VendorDashboardPage: React.FC = () => {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [profile, setProfile] = useState<VendorProfile | null>(null);
@@ -131,12 +131,21 @@ export const VendorDashboardPage: React.FC = () => {
     return matchesQuery && matchesStatus;
   });
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
   const pendingCount = deliveries.filter((d) => d.status === 'awaiting_pickup' || d.status === 'searching' || d.status === 'opportunity_sent' || d.status === 'provider_selected').length;
+  // Listen for profile updates from AppLayout settings modal
+  useEffect(() => {
+    if (!user?.id) return;
+    const handleProfileUpdated = () => {
+      logisticsService.getVendorProfile(user.id)
+        .then((prof) => {
+          if (prof) setProfile(prof);
+        })
+        .catch((err) => console.warn('Failed to refresh vendor profile:', err));
+    };
+    window.addEventListener('of:profile-updated', handleProfileUpdated);
+    return () => window.removeEventListener('of:profile-updated', handleProfileUpdated);
+  }, [user?.id]);
+
   const inTransitCount = deliveries.filter((d) => d.status === 'in_transit').length;
   const deliveredCount = deliveries.filter((d) => d.status === 'delivered').length;
 
@@ -145,12 +154,9 @@ export const VendorDashboardPage: React.FC = () => {
       {/* Header */}
       <div className="of-dashboard-header">
         <div className="of-dashboard-title-group">
-          <div className="of-dashboard-title-row">
-            <h1 className="of-dashboard-h1">Vendor Workspace</h1>
-            <Badge variant="brand">Vendor</Badge>
-          </div>
+          <h1 className="of-dashboard-h1">Vendor Operations</h1>
           <p className="of-dashboard-subtitle">
-            Manage your delivery dispatches and connect with verified logistics providers.
+            Manage your delivery dispatches, monitor active couriers, and track fulfillment in real-time.
           </p>
         </div>
 
@@ -162,11 +168,6 @@ export const VendorDashboardPage: React.FC = () => {
             leftIcon={<Plus size={16} />}
           >
             Create Delivery
-          </Button>
-
-          <Button variant="outline" size="sm" onClick={handleSignOut}>
-            <LogOut size={15} />
-            Sign out
           </Button>
         </div>
       </div>
@@ -248,10 +249,6 @@ export const VendorDashboardPage: React.FC = () => {
                 Track active requests, dispatches, and status updates
               </span>
             </div>
-
-            <Button variant="primary" size="sm" onClick={() => navigate('/vendor/deliveries/create')} leftIcon={<Plus size={15} />}>
-              Create Delivery
-            </Button>
           </div>
 
           {/* Filter Bar */}
@@ -269,15 +266,25 @@ export const VendorDashboardPage: React.FC = () => {
             </div>
 
             <div className="of-filter-pills">
-              {(['all', 'pending', 'in_transit', 'delivered'] as const).map((filterKey) => (
-                <button
-                  key={filterKey}
-                  onClick={() => setStatusFilter(filterKey)}
-                  className={`of-filter-pill ${statusFilter === filterKey ? 'is-active' : ''}`}
-                >
-                  {filterKey === 'pending' ? 'In Progress' : filterKey.replace('_', ' ')}
-                </button>
-              ))}
+              {(['all', 'pending', 'in_transit', 'delivered'] as const).map((filterKey) => {
+                const label =
+                  filterKey === 'all'
+                    ? 'All'
+                    : filterKey === 'pending'
+                    ? 'In Progress'
+                    : filterKey === 'in_transit'
+                    ? 'In Transit'
+                    : 'Delivered';
+                return (
+                  <button
+                    key={filterKey}
+                    onClick={() => setStatusFilter(filterKey)}
+                    className={`of-filter-pill ${statusFilter === filterKey ? 'is-active' : ''}`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

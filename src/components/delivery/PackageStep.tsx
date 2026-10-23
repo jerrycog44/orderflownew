@@ -188,23 +188,40 @@ export const PackageStep: React.FC<PackageStepProps> = ({ initialData, onNext })
             <label
               style={{
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'center',
-                padding: 'var(--space-6)',
-                border: '2px dashed var(--color-border-default)',
+                gap: 'var(--space-3)',
+                padding: 'var(--space-3) var(--space-4)',
+                border: '1px dashed var(--color-border-strong)',
                 borderRadius: 'var(--radius-md)',
                 cursor: 'pointer',
                 backgroundColor: 'var(--color-bg-subtle)',
-                transition: 'border-color var(--transition-fast)',
+                transition: 'all var(--transition-fast)',
               }}
             >
-              <Upload size={24} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
-              <span style={{ fontSize: 'var(--font-size-sm)', fontWeight: 500, color: 'var(--color-text-secondary)' }}>
-                Click to upload product photo
-              </span>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
-                PNG, JPG or WEBP (Max 5MB)
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--color-brand-accent-light)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Upload size={16} color="var(--color-brand-accent)" />
+              </div>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)', display: 'block' }}>
+                  Upload package preview photo (Optional)
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                  PNG, JPG or WEBP (Max 5MB)
+                </span>
+              </div>
+              <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-brand-accent)' }}>
+                Browse
               </span>
               <input type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
             </label>

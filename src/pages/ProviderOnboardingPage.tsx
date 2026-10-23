@@ -22,11 +22,31 @@ export const ProviderOnboardingPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  const [selectedVehicles, setSelectedVehicles] = useState<string[]>(['Motorcycle', 'Delivery Van']);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([
+    'Fashion & Apparel',
+    'Electronics & Luxury',
+    'Food & Groceries',
+  ]);
+
+  const toggleVehicle = (v: string) => {
+    setSelectedVehicles((prev) =>
+      prev.includes(v) ? prev.filter((item) => item !== v) : [...prev, v]
+    );
+  };
+
+  const toggleCategory = (c: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(c) ? prev.filter((item) => item !== c) : [...prev, c]
+    );
+  };
+
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!formData.providerName.trim()) errs.providerName = 'Provider name is required.';
     if (!formData.providerType.trim()) errs.providerType = 'Provider type is required.';
     if (!formData.coverageArea.trim()) errs.coverageArea = 'Coverage area is required.';
+    if (selectedVehicles.length === 0) errs.vehicles = 'Please select at least one vehicle type.';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -45,8 +65,8 @@ export const ProviderOnboardingPage: React.FC = () => {
         providerName: formData.providerName,
         providerType: (formData.providerType as 'courier' | 'freight' | 'van' | 'motorcycle' | 'mixed') || 'courier',
         coverageArea: formData.coverageArea,
-        vehicleTypes: formData.vehicleTypes.split(',').map(v => v.trim()).filter(Boolean),
-        packageCategories: formData.packageCategories.split(',').map(v => v.trim()).filter(Boolean),
+        vehicleTypes: selectedVehicles,
+        packageCategories: selectedCategories,
         availability: formData.availability as 'available' | 'unavailable',
       },
     });
@@ -60,15 +80,24 @@ export const ProviderOnboardingPage: React.FC = () => {
   };
 
   const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
   };
+
+  const VEHICLE_OPTIONS = ['Motorcycle', 'Delivery Van', 'Cargo Truck', 'Bicycle / E-bike'];
+  const CATEGORY_OPTIONS = [
+    'Fashion & Apparel',
+    'Electronics & Luxury',
+    'Food & Groceries',
+    'Healthcare & Beauty',
+    'Documents & Parcels',
+  ];
 
   return (
     <AuthLayout backLink={{ to: '/role-selection', label: 'Back to role selection' }}>
-      <h1 className="of-auth-heading">Logistics Provider onboarding</h1>
+      <h1 className="of-auth-heading">Logistics Provider Onboarding</h1>
       <p className="of-auth-subheading">
-        Provide key details about your service so vendors can find you.
+        Provide key details about your fleet service so commercial vendors can route dispatches to you.
       </p>
 
       {apiError && (
@@ -80,69 +109,129 @@ export const ProviderOnboardingPage: React.FC = () => {
 
       <form className="of-auth-form" onSubmit={handleSubmit} noValidate>
         <Input
-          label="Provider name"
+          label="Provider / Fleet Company Name"
           type="text"
-          placeholder="FastShip Logistics"
+          placeholder="e.g. SwiftHaul Express"
           value={formData.providerName}
-          onChange={e => handleChange('providerName', e.target.value)}
+          onChange={(e) => handleChange('providerName', e.target.value)}
           error={errors.providerName}
           leftIcon={<Truck size={16} />}
         />
+
         <div style={{ marginBottom: 'var(--space-4)' }}>
           <label className="of-form-label" htmlFor="providerType">
-            Provider type
+            Provider Type
           </label>
           <select
             id="providerType"
             value={formData.providerType}
-            onChange={e => handleChange('providerType', e.target.value)}
+            onChange={(e) => handleChange('providerType', e.target.value)}
             className="of-input"
           >
-            <option value="courier">Courier</option>
-            <option value="freight">Freight</option>
-            <option value="van">Van Service</option>
-            <option value="motorcycle">Motorcycle Rider</option>
-            <option value="mixed">Mixed Fleet</option>
+            <option value="courier">Courier (Last-mile Dispatch)</option>
+            <option value="freight">Freight & Heavy Haulage</option>
+            <option value="van">Van Delivery Fleet</option>
+            <option value="motorcycle">Motorcycle Dispatch Network</option>
+            <option value="mixed">Mixed Multimodal Fleet</option>
           </select>
         </div>
+
         <Input
-          label="Coverage area"
+          label="Primary Service Coverage Territory"
           type="text"
-          placeholder="Los Angeles, CA; Nationwide"
+          placeholder="e.g. Ibadan (Bodija, Ring Road, Dugbe) or Lagos (Ikeja, Island)"
           value={formData.coverageArea}
-          onChange={e => handleChange('coverageArea', e.target.value)}
+          onChange={(e) => handleChange('coverageArea', e.target.value)}
           error={errors.coverageArea}
         />
-        <Input
-          label="Vehicle types (comma separated)"
-          type="text"
-          placeholder="Van, Motorcycle, Truck"
-          value={formData.vehicleTypes}
-          onChange={e => handleChange('vehicleTypes', e.target.value)}
-        />
-        <Input
-          label="Package categories (comma separated)"
-          type="text"
-          placeholder="Electronics, Clothing, Fragile"
-          value={formData.packageCategories}
-          onChange={e => handleChange('packageCategories', e.target.value)}
-        />
+
+        {/* Interactive Vehicle Chips */}
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label className="of-form-label">
+            Fleet Vehicle Types {errors.vehicles && <span style={{ color: '#DC2626', fontSize: '11px' }}>({errors.vehicles})</span>}
+          </label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+            {VEHICLE_OPTIONS.map((v) => {
+              const isSelected = selectedVehicles.includes(v);
+              return (
+                <button
+                  type="button"
+                  key={v}
+                  onClick={() => toggleVehicle(v)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--font-size-xs)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    border: isSelected
+                      ? '1px solid var(--color-brand-accent)'
+                      : '1px solid var(--color-border-default)',
+                    background: isSelected
+                      ? 'var(--color-brand-accent-light)'
+                      : 'var(--color-bg-subtle)',
+                    color: isSelected
+                      ? 'var(--color-brand-accent)'
+                      : 'var(--color-text-secondary)',
+                    transition: 'all var(--transition-fast)',
+                  }}
+                >
+                  {isSelected ? '✓ ' : '+ '}{v}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Interactive Category Chips */}
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <label className="of-form-label">Supported Package Categories</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '6px' }}>
+            {CATEGORY_OPTIONS.map((c) => {
+              const isSelected = selectedCategories.includes(c);
+              return (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => toggleCategory(c)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: 'var(--font-size-xs)',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    border: isSelected
+                      ? '1px solid #10B981'
+                      : '1px solid var(--color-border-default)',
+                    background: isSelected ? '#ECFDF5' : 'var(--color-bg-subtle)',
+                    color: isSelected ? '#047857' : 'var(--color-text-secondary)',
+                    transition: 'all var(--transition-fast)',
+                  }}
+                >
+                  {isSelected ? '✓ ' : '+ '}{c}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div style={{ marginTop: 'var(--space-3)' }}>
           <label className="of-form-label" htmlFor="availability">
-            Availability
+            Initial Availability Status
           </label>
           <select
             id="availability"
             value={formData.availability}
-            onChange={e => handleChange('availability', e.target.value)}
+            onChange={(e) => handleChange('availability', e.target.value)}
             className="of-input"
           >
-            <option value="available">Available</option>
-            <option value="unavailable">Unavailable</option>
+            <option value="available">Online (Ready to receive dispatches)</option>
+            <option value="unavailable">Offline (Set available later)</option>
           </select>
         </div>
+
         <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
-          Finish onboarding
+          Finish Onboarding
         </Button>
       </form>
     </AuthLayout>

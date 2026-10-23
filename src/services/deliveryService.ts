@@ -345,7 +345,7 @@ export const deliveryService = {
    * In live mode, invokes `get_marketplace_opportunities` RPC with PII redaction
    * (hiding customer phone numbers and street addresses until acceptance).
    */
-  async getProviderOpportunities(coverageArea?: string): Promise<DeliveryRecord[]> {
+  async getProviderOpportunities(coverageArea?: string, providerId?: string): Promise<DeliveryRecord[]> {
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.rpc('get_marketplace_opportunities', {
@@ -406,8 +406,15 @@ export const deliveryService = {
 
     const all = this.getAllDeliveriesSync();
     return all.filter((d) => {
+      // Exclude jobs already accepted by this provider or completed
+      if (providerId && (d.providerId === providerId || d.selectedProvider?.id === providerId)) {
+        return false;
+      }
       const isAvailableStatus =
-        d.status === 'created' || d.status === 'searching' || d.status === 'awaiting_pickup';
+        d.status === 'created' ||
+        d.status === 'searching' ||
+        d.status === 'opportunity_sent' ||
+        d.status === 'awaiting_pickup';
       if (!isAvailableStatus) return false;
       if (!coverageArea) return true;
       const areaLower = coverageArea.toLowerCase();
@@ -582,12 +589,11 @@ export const deliveryService = {
 
     const target = all[index];
     if (
-      target.status === 'provider_selected' ||
-      target.status === 'awaiting_pickup' ||
-      target.status === 'picked_up' ||
+      (target.status === 'provider_selected' && target.providerId) ||
       target.status === 'in_transit' ||
       target.status === 'delivered' ||
-      target.status === 'cancelled'
+      target.status === 'cancelled' ||
+      target.providerId === providerId
     ) {
       return null;
     }
@@ -887,6 +893,9 @@ export const deliveryService = {
       vendorName: target.vendorName,
       providerName: target.selectedProvider?.name || null,
       providerLogoUrl: target.selectedProvider?.logoUrl || null,
+      paymentMethod: target.paymentMethod,
+      paymentStatus: target.paymentStatus,
+      amountDue: target.paymentMethod === 'cash_on_delivery' ? target.estimatedPrice : undefined,
       podVerificationCode: target.podVerificationCode || null,
       requirePhotoProof: target.requirePhotoProof,
       hasPhotoProof: Boolean(target.podPhotoUrl),

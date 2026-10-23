@@ -176,6 +176,9 @@ export interface PublicTrackingInfo {
   vendorName: string;
   providerName: string | null;
   providerLogoUrl: string | null;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: PaymentStatus;
+  amountDue?: number;
   podVerificationCode?: string | null;
   requirePhotoProof?: boolean;
   hasPhotoProof?: boolean;

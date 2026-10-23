@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft, Copy, Check, Key, Camera } from 'lucide-react';
+import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft, Copy, Check, Key, Camera, Banknote } from 'lucide-react';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -8,11 +8,11 @@ import type { PublicTrackingInfo } from '../types';
 import './CustomerTrackingPage.css';
 
 const TRACKING_STEPS = [
-  { key: 'created', label: 'Order Created' },
-  { key: 'dispatching', label: 'Dispatching' },
-  { key: 'provider_selected', label: 'Provider Matched' },
-  { key: 'in_transit', label: 'In Transit' },
-  { key: 'delivered', label: 'Delivered' },
+  { key: 'created', label: 'Order Created', icon: Package },
+  { key: 'dispatching', label: 'Dispatching', icon: Clock },
+  { key: 'provider_selected', label: 'Provider Matched', icon: ShieldCheck },
+  { key: 'in_transit', label: 'In Transit', icon: Truck },
+  { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
 ];
 
 const getStepIndex = (status: string): number => {
@@ -207,19 +207,75 @@ export const CustomerTrackingPage: React.FC = () => {
             {TRACKING_STEPS.map((step, idx) => {
               const isCompleted = idx < currentStep;
               const isCurrent = idx === currentStep;
+              const StepIcon = step.icon;
               return (
                 <div
                   key={step.key}
                   className={`tracking-step ${isCompleted ? 'completed' : ''} ${isCurrent ? 'current' : ''}`}
                 >
-                  <div className="tracking-step-dot">
-                    {isCompleted ? <CheckCircle2 size={18} /> : idx + 1}
+                  <div className="tracking-step-dot" title={step.label}>
+                    {isCompleted ? <CheckCircle2 size={18} /> : <StepIcon size={18} />}
                   </div>
                   <span className="tracking-step-label">{step.label}</span>
                 </div>
               );
             })}
           </div>
+
+          {/* Cash on Delivery (COD) Payment Guidance */}
+          {trackingInfo.status !== 'delivered' && trackingInfo.paymentMethod === 'cash_on_delivery' && (
+            <div
+              style={{
+                background: 'rgba(245, 158, 11, 0.08)',
+                border: '1px solid rgba(245, 158, 11, 0.28)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                margin: 'var(--space-6) 0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: 'var(--radius-full)',
+                    background: 'rgba(245, 158, 11, 0.15)',
+                    color: '#D97706',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Banknote size={20} />
+                </div>
+                <div>
+                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#D97706', textTransform: 'uppercase' }}>
+                    Payment on Delivery Required
+                  </span>
+                  <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                    Have cash or mobile bank transfer ready upon courier arrival. Remittance is confirmed upon handover.
+                  </p>
+                </div>
+              </div>
+
+              {trackingInfo.amountDue !== undefined && (
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                    Amount Due
+                  </span>
+                  <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: '#B45309' }}>
+                    ₦{trackingInfo.amountDue.toLocaleString()}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Proof of Delivery (POD) Handover Section for Recipient */}
           {trackingInfo.status !== 'delivered' && trackingInfo.podVerificationCode && (

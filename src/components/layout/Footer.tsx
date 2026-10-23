@@ -77,7 +77,6 @@ export const Footer: React.FC<FooterProps> = ({
               <ul className="of-footer-list">
                 <li><a href="#trust-quality">About OrderFlow</a></li>
                 <li><Link to="/privacy">Security & Privacy</Link></li>
-                <li><Link to="/privacy">Privacy Policy</Link></li>
                 <li><Link to="/terms">Terms of Service</Link></li>
               </ul>
             </div>

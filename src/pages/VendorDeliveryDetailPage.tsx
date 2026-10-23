@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldCheck,
   Camera,
+  Clock,
 } from 'lucide-react';
 import type { DeliveryRecord } from '../types';
 import { deliveryService } from '../services/deliveryService';
@@ -22,11 +23,11 @@ import { Badge } from '../components/ui/Badge';
 import './VendorDeliveryDetailPage.css';
 
 const TIMELINE_STEPS = [
-  { key: 'created', label: 'Order Created' },
-  { key: 'dispatching', label: 'Dispatching' },
-  { key: 'provider_selected', label: 'Provider Matched' },
-  { key: 'in_transit', label: 'In Transit' },
-  { key: 'delivered', label: 'Delivered' },
+  { key: 'created', label: 'Order Created', icon: Package },
+  { key: 'dispatching', label: 'Dispatching', icon: Clock },
+  { key: 'provider_selected', label: 'Provider Matched', icon: ShieldCheck },
+  { key: 'in_transit', label: 'In Transit', icon: Truck },
+  { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
 ];
 
 export const VendorDeliveryDetailPage: React.FC = () => {
@@ -238,12 +239,13 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         {TIMELINE_STEPS.map((step, idx) => {
           const isCompleted = idx < currentStepIdx;
           const isActive = idx === currentStepIdx;
+          const StepIcon = step.icon;
 
           return (
             <React.Fragment key={step.key}>
               <div className={`of-timeline-step ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}>
-                <div className="of-timeline-icon">
-                  {isCompleted ? <CheckCircle2 size={16} /> : idx + 1}
+                <div className="of-timeline-icon" title={step.label}>
+                  {isCompleted ? <CheckCircle2 size={16} /> : <StepIcon size={16} />}
                 </div>
                 <span className="of-timeline-label">{step.label}</span>
               </div>

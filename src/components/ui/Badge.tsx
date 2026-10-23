@@ -7,6 +7,7 @@ export interface BadgeProps {
   variant?: 'neutral' | 'success' | 'warning' | 'info' | 'error' | 'brand';
   size?: 'sm' | 'md';
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
@@ -14,9 +15,10 @@ export const Badge: React.FC<BadgeProps> = ({
   variant = 'neutral',
   size = 'sm',
   className = '',
+  style,
 }) => {
   return (
-    <span className={`of-badge of-badge-${variant} of-badge-${size} ${className}`}>
+    <span className={`of-badge of-badge-${variant} of-badge-${size} ${className}`} style={style}>
       {children}
     </span>
   );

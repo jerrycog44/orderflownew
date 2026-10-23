@@ -419,4 +419,112 @@ export const logisticsService = {
     }
     return null;
   },
+
+  /**
+   * Updates vendor profile details.
+   */
+  async updateVendorProfile(userId: string, updates: Partial<VendorProfile>): Promise<VendorProfile | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('vendors')
+          .update({
+            ...(updates.businessName ? { business_name: updates.businessName } : {}),
+            ...(updates.businessCategory ? { business_category: updates.businessCategory } : {}),
+            ...(updates.operatingCity ? { operating_city: updates.operatingCity } : {}),
+          })
+          .eq('id', userId)
+          .select()
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            userId: data.id,
+            businessName: data.business_name,
+            businessCategory: data.business_category,
+            operatingCity: data.operating_city,
+            createdAt: data.created_at,
+          };
+        }
+      } catch (err) {
+        console.warn('logisticsService.updateVendorProfile: Supabase update failed:', err);
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem('of_dev_vendor_profiles');
+      const profiles: Record<string, VendorProfile> = raw ? JSON.parse(raw) : {};
+      const existing = profiles[userId] || {
+        userId,
+        businessName: 'Business Vendor',
+        businessCategory: 'Retail',
+        operatingCity: 'Ibadan',
+        createdAt: new Date().toISOString(),
+      };
+      const updated: VendorProfile = { ...existing, ...updates };
+      profiles[userId] = updated;
+      localStorage.setItem('of_dev_vendor_profiles', JSON.stringify(profiles));
+      return updated;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Updates logistics provider profile details.
+   */
+  async updateProviderProfile(userId: string, updates: Partial<LogisticsProviderProfile>): Promise<LogisticsProviderProfile | null> {
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('logistics_providers')
+          .update({
+            ...(updates.providerName ? { provider_name: updates.providerName } : {}),
+            ...(updates.providerType ? { provider_type: updates.providerType } : {}),
+            ...(updates.coverageArea ? { coverage_area: updates.coverageArea } : {}),
+            ...(updates.vehicleTypes ? { vehicle_types: updates.vehicleTypes } : {}),
+            ...(updates.packageCategories ? { package_categories: updates.packageCategories } : {}),
+          })
+          .eq('id', userId)
+          .select()
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            userId: data.id,
+            providerName: data.provider_name,
+            providerType: data.provider_type as LogisticsProviderProfile['providerType'],
+            coverageArea: data.coverage_area,
+            vehicleTypes: data.vehicle_types,
+            packageCategories: data.package_categories,
+            availability: 'available',
+            createdAt: data.created_at,
+          };
+        }
+      } catch (err) {
+        console.warn('logisticsService.updateProviderProfile: Supabase update failed:', err);
+      }
+    }
+
+    try {
+      const raw = localStorage.getItem('of_dev_provider_profiles');
+      const profiles: Record<string, LogisticsProviderProfile> = raw ? JSON.parse(raw) : {};
+      const existing = profiles[userId] || {
+        userId,
+        providerName: 'Logistics Fleet',
+        providerType: 'courier',
+        coverageArea: 'Ibadan',
+        vehicleTypes: ['Motorcycle'],
+        packageCategories: ['parcel'],
+        availability: 'available',
+        createdAt: new Date().toISOString(),
+      };
+      const updated: LogisticsProviderProfile = { ...existing, ...updates };
+      profiles[userId] = updated;
+      localStorage.setItem('of_dev_provider_profiles', JSON.stringify(profiles));
+      return updated;
+    } catch {
+      return null;
+    }
+  },
 };
