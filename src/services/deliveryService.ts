@@ -218,74 +218,99 @@ export const deliveryService = {
     let initialStatus: DeliveryStatus = data.status || (isAuto ? 'opportunity_sent' : 'awaiting_pickup');
 
     if (isSupabaseConfigured) {
-      let candidateIds: string[] = [];
-      if (isAuto) {
-        try {
-          const candidates = await logisticsService.getCandidateQueue({
-            package: data.package,
-            pickup: data.pickup,
-            destination: data.destination,
-          });
-          candidateIds = candidates.map((c) => c.id).filter(isUuid);
-        } catch (candErr) {
-          console.warn('Failed to calculate candidate queue:', candErr);
+      // If vendor is an unauthenticated mock ID and no Supabase session exists, skip live RPC to prevent anon 404
+      let isLiveAuthSession = true;
+      try {
+        if (supabase.auth?.getSession) {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (!sessionData?.session?.user && !isUuid(data.vendorId)) {
+            isLiveAuthSession = false;
+          }
+        }
+      } catch {
+        // Ignored in test environments where auth is mocked differently
+      }
+
+      if (isLiveAuthSession) {
+        let candidateIds: string[] = [];
+        if (isAuto) {
+          try {
+            const candidates = await logisticsService.getCandidateQueue({
+              package: data.package,
+              pickup: data.pickup,
+              destination: data.destination,
+            });
+            candidateIds = candidates.map((c) => c.id).filter(isUuid);
+          } catch (candErr) {
+            console.warn('Failed to calculate candidate queue:', candErr);
+          }
+        }
+
+        const { data: res, error: rpcErr } = await supabase.rpc('create_delivery_transactional', {
+          p_pickup_address: data.pickup.address,
+          p_pickup_city: data.pickup.city,
+          p_destination_address: data.destination.address,
+          p_destination_city: data.destination.city,
+          p_recipient_name: data.recipient.name,
+          p_recipient_phone: data.recipient.phone,
+          p_estimated_price: data.estimatedPrice,
+          p_dispatch_mode: isAuto ? 'auto' : 'manual',
+          p_product_name: data.productName,
+          p_item_category: data.package.itemCategory,
+          p_package_type: data.package.packageType,
+          p_weight_kg: data.package.weightKg,
+          p_quantity: data.package.quantity,
+          p_length_cm: data.package.dimensionsCm?.length ?? null,
+          p_width_cm: data.package.dimensionsCm?.width ?? null,
+          p_height_cm: data.package.dimensionsCm?.height ?? null,
+          p_is_fragile: data.package.fragile,
+          p_image_url: data.package.imageUrl || null,
+          p_special_instructions: data.package.notes || null,
+          p_pickup_contact_name: data.pickup.contactName || null,
+          p_pickup_contact_phone: data.pickup.contactPhone || null,
+          p_delivery_notes: data.deliveryNote || null,
+          p_estimated_delivery_time: data.estimatedDeliveryTime || 'Same Day',
+          p_selected_provider_id: !isAuto && data.providerId && isUuid(data.providerId) ? data.providerId : null,
+          p_candidate_provider_ids: candidateIds.length > 0 ? candidateIds : null,
+          p_idempotency_key: idempotencyKey || null,
+        });
+
+        // Detect missing function in schema cache (migration 004 pending or session unauthenticated)
+        const isSchemaCacheError =
+          rpcErr?.code === 'PGRST202' ||
+          Boolean(rpcErr?.message && (rpcErr.message.includes('schema cache') || rpcErr.message.includes('Could not find the function')));
+
+        if (isSchemaCacheError) {
+          console.warn(
+            'create_delivery_transactional RPC is not available in Supabase schema cache (migration 004 pending or session unauthenticated). Falling back to offline client store.',
+            rpcErr?.message
+          );
+        } else if (rpcErr || !res || !res.success) {
+          const errorMsg = rpcErr?.message || (res as { error?: string })?.error || 'Database rejected delivery creation';
+          console.error('deliveryService.createDelivery error:', errorMsg);
+          throw new Error(errorMsg);
+        } else {
+          const createdLive: DeliveryRecord = {
+            ...data,
+            id: res.delivery_id,
+            trackingCode: res.tracking_code,
+            status: res.status as DeliveryStatus,
+            providerId: res.provider_id || undefined,
+            currentOpportunityProviderId: res.current_opportunity_provider_id || undefined,
+            candidateQueue: res.candidate_provider_ids,
+            paymentMethod: data.paymentMethod || 'cash_on_delivery',
+            paymentStatus: data.paymentStatus || (data.paymentMethod === 'prepaid_online' ? 'collected' : 'pending'),
+            podVerificationCode: data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString(),
+            requirePhotoProof: Boolean(data.requirePhotoProof),
+            createdAt: res.created_at,
+            updatedAt: res.updated_at,
+          };
+
+          realtimeService.notifyMutation('delivery', createdLive);
+          realtimeService.notifyMutation('dispatch', createdLive);
+          return createdLive;
         }
       }
-
-      const { data: res, error: rpcErr } = await supabase.rpc('create_delivery_transactional', {
-        p_pickup_address: data.pickup.address,
-        p_pickup_city: data.pickup.city,
-        p_destination_address: data.destination.address,
-        p_destination_city: data.destination.city,
-        p_recipient_name: data.recipient.name,
-        p_recipient_phone: data.recipient.phone,
-        p_estimated_price: data.estimatedPrice,
-        p_dispatch_mode: isAuto ? 'auto' : 'manual',
-        p_product_name: data.productName,
-        p_item_category: data.package.itemCategory,
-        p_package_type: data.package.packageType,
-        p_weight_kg: data.package.weightKg,
-        p_quantity: data.package.quantity,
-        p_length_cm: data.package.dimensionsCm?.length ?? null,
-        p_width_cm: data.package.dimensionsCm?.width ?? null,
-        p_height_cm: data.package.dimensionsCm?.height ?? null,
-        p_is_fragile: data.package.fragile,
-        p_image_url: data.package.imageUrl || null,
-        p_special_instructions: data.package.notes || null,
-        p_pickup_contact_name: data.pickup.contactName || null,
-        p_pickup_contact_phone: data.pickup.contactPhone || null,
-        p_delivery_notes: data.deliveryNote || null,
-        p_estimated_delivery_time: data.estimatedDeliveryTime || 'Same Day',
-        p_selected_provider_id: !isAuto && data.providerId && isUuid(data.providerId) ? data.providerId : null,
-        p_candidate_provider_ids: candidateIds.length > 0 ? candidateIds : null,
-        p_idempotency_key: idempotencyKey || null,
-      });
-
-      if (rpcErr || !res || !res.success) {
-        const errorMsg = rpcErr?.message || (res as { error?: string })?.error || 'Database rejected delivery creation';
-        console.error('deliveryService.createDelivery error:', errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      const createdLive: DeliveryRecord = {
-        ...data,
-        id: res.delivery_id,
-        trackingCode: res.tracking_code,
-        status: res.status as DeliveryStatus,
-        providerId: res.provider_id || undefined,
-        currentOpportunityProviderId: res.current_opportunity_provider_id || undefined,
-        candidateQueue: res.candidate_provider_ids,
-        paymentMethod: data.paymentMethod || 'cash_on_delivery',
-        paymentStatus: data.paymentStatus || (data.paymentMethod === 'prepaid_online' ? 'collected' : 'pending'),
-        podVerificationCode: data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString(),
-        requirePhotoProof: Boolean(data.requirePhotoProof),
-        createdAt: res.created_at,
-        updatedAt: res.updated_at,
-      };
-
-      realtimeService.notifyMutation('delivery', createdLive);
-      realtimeService.notifyMutation('dispatch', createdLive);
-      return createdLive;
     }
 
     // Offline / Demo fallback

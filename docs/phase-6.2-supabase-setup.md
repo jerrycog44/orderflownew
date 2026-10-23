@@ -88,8 +88,9 @@ All 9 application tables have RLS enabled (`ALTER TABLE ... ENABLE ROW LEVEL SEC
 ---
 
 ## 8. Manual Action Required by User
-
-To apply this migration to your live Supabase project:
-1. Open the SQL Editor in your [Supabase Dashboard](https://database.new).
-2. Copy the contents of [`supabase/migrations/001_initial_schema.sql`](file:///c:/OrderFlow/supabase/migrations/001_initial_schema.sql).
-3. Paste and click **Run**.
+ 
+To apply database migrations to your live Supabase project, execute the following SQL scripts sequentially in your [Supabase Dashboard](https://database.new) SQL Editor:
+1. Run [`supabase/migrations/001_initial_schema.sql`](file:///c:/orderflownew/supabase/migrations/001_initial_schema.sql) (Core tables, ENUMs, and base RLS policies).
+2. Run [`supabase/migrations/002_fix_auth_flow.sql`](file:///c:/orderflownew/supabase/migrations/002_fix_auth_flow.sql) (Auto profile creation trigger on signup).
+3. Run [`supabase/migrations/003_dispatch_concurrency_and_security.sql`](file:///c:/orderflownew/supabase/migrations/003_dispatch_concurrency_and_security.sql) (Concurrency-safe dispatch opportunity locks).
+4. Run [`supabase/migrations/004_atomic_dispatch_and_security_hardening.sql`](file:///c:/orderflownew/supabase/migrations/004_atomic_dispatch_and_security_hardening.sql) (Defines `create_delivery_transactional`, atomic marketplace matching, PII redactions, and triggers `NOTIFY pgrst, 'reload schema'`).

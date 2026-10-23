@@ -1049,7 +1049,8 @@ DROP POLICY IF EXISTS "Providers can update opportunity response status" ON disp
 -- NOTE: Direct client INSERTs into deliveries/package_details (001 policies)
 -- are intentionally left in place until the frontend switches to
 -- create_delivery_transactional (Remediation Phase 3). They are removed in
--- migration 005, which must ship together with that frontend change.
+-- Reload PostgREST schema cache immediately
+NOTIFY pgrst, 'reload schema';
 
 -- ============================================================================
 -- END OF MIGRATION 004
