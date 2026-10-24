@@ -1,35 +1,60 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Truck,
-  MapPin,
-  Navigation,
   CheckCircle2,
   PackageCheck,
   Phone,
-  User as UserIcon,
   XCircle,
   AlertCircle,
-  Clock,
   Camera,
   ShieldCheck,
   Banknote,
   Upload,
+  RotateCw,
+  User as UserIcon,
+  Compass,
+  Repeat,
+  LogOut,
+  Package,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { logisticsService } from '../services/logisticsService';
-import { Button } from '../components/ui/Button';
-import { Badge } from '../components/ui/Badge';
-import { Modal } from '../components/ui/Modal';
 import { useToast } from '../components/ui/Toast';
+import {
+  MobileHeader,
+  StatusFilterPills,
+  BottomSheet,
+} from '../components/mobile';
+import type { FilterPillItem } from '../components/mobile';
 import type { LogisticsProviderProfile, DeliveryRecord, DeliveryStatus, ProviderAvailability } from '../types';
 import './ProviderDashboardPage.css';
 
 export const ProviderDashboardPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, signOut, setRole } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState<'opportunities' | 'assigned'>('opportunities');
+  const providerId = user?.id || 'prov_swifthaul';
+
+  // Availability State
+  const [availability, setAvailability] = useState<ProviderAvailability>('available');
+  const [profile, setProfile] = useState<LogisticsProviderProfile | null>(null);
+
+  // Deliveries State
+  const [targetedOpportunity, setTargetedOpportunity] = useState<DeliveryRecord | null>(null);
+  const [opportunities, setOpportunities] = useState<DeliveryRecord[]>([]);
+  const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Active Tab: 'opportunities' | 'active' | 'completed'
+  const [activeTab, setActiveTab] = useState<string>('opportunities');
+
+  // Job Details Drawer state
   const [selectedJob, setSelectedJob] = useState<DeliveryRecord | null>(null);
 
   // Proof of Delivery (POD) modal state
@@ -39,96 +64,92 @@ export const ProviderDashboardPage: React.FC = () => {
   const [podError, setPodError] = useState<string | null>(null);
   const [isVerifyingPod, setIsVerifyingPod] = useState(false);
 
-  const providerId = user?.id || 'prov_swifthaul';
-
-  const [availability, setAvailability] = useState<ProviderAvailability>('available');
-  const [profile, setProfile] = useState<LogisticsProviderProfile | null>(null);
-  const [targetedOpportunity, setTargetedOpportunity] = useState<DeliveryRecord | null>(null);
-  const [opportunities, setOpportunities] = useState<DeliveryRecord[]>([]);
-  const [assignedDeliveries, setAssignedDeliveries] = useState<DeliveryRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
+  // Profile Drawer state
+  const [profileSheetOpen, setProfileSheetOpen] = useState(false);
+  const [editProviderName, setEditProviderName] = useState('');
+  const [editCoverageArea, setEditCoverageArea] = useState('');
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   const providerName = profile?.providerName || user?.fullName || 'SwiftHaul Express';
 
-  const refreshData = useCallback(async (coverageArea?: string) => {
-    try {
-      setRefreshError(null);
-      const [targeted, opps, assigned] = await Promise.all([
-        deliveryService.getProviderTargetedOpportunity(providerId),
-        deliveryService.getProviderOpportunities(coverageArea, providerId),
-        deliveryService.getProviderAssignedDeliveries(providerId),
-      ]);
-      setTargetedOpportunity(targeted);
-      setOpportunities(opps);
-      setAssignedDeliveries(assigned);
-    } catch (err) {
-      console.error('Error refreshing provider data:', err);
-      setRefreshError(err instanceof Error ? err.message : 'Failed to refresh dispatch opportunities.');
-    }
-  }, [providerId]);
-
+  // Initial and reactive data fetch
   useEffect(() => {
     let isMounted = true;
 
-    async function loadInitialProviderData() {
+    async function loadData() {
       try {
+        setRefreshError(null);
         const prof = await logisticsService.getProviderProfile(providerId);
+
         if (!isMounted) return;
 
         if (prof) {
           setProfile(prof);
+          setEditProviderName(prof.providerName || '');
+          setEditCoverageArea(prof.coverageArea || '');
           if (prof.availability) {
             setAvailability(prof.availability);
           }
         }
 
-        await refreshData(prof?.coverageArea);
+        const [targeted, opps, assigned] = await Promise.all([
+          deliveryService.getProviderTargetedOpportunity(providerId),
+          deliveryService.getProviderOpportunities(prof?.coverageArea, providerId),
+          deliveryService.getProviderAssignedDeliveries(providerId),
+        ]);
+
+        if (isMounted) {
+          setTargetedOpportunity(targeted);
+          setOpportunities(opps);
+          setAssignedDeliveries(assigned);
+        }
       } catch (err) {
-        console.error('Failed to load provider profile:', err);
+        console.error('Error refreshing provider data:', err);
+        if (isMounted) {
+          setRefreshError(err instanceof Error ? err.message : 'Failed to refresh dispatch opportunities.');
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
+          setIsRefreshing(false);
         }
       }
     }
 
-    loadInitialProviderData();
+    loadData();
 
     return () => {
       isMounted = false;
     };
-  }, [providerId, refreshData]);
+  }, [providerId, refreshTrigger]);
 
   // Realtime subscription for incoming dispatch opportunities & assigned deliveries
   useEffect(() => {
     if (!providerId) return;
 
     const unsubscribe = deliveryService.subscribeToProviderDispatches(providerId, () => {
-      refreshData(profile?.coverageArea);
+      setRefreshTrigger((prev) => prev + 1);
     });
 
     return () => {
       unsubscribe();
     };
-  }, [providerId, profile?.coverageArea, refreshData]);
+  }, [providerId]);
 
-  // Listen for workspace profile updates from AppLayout settings modal
+  // Listen for workspace profile updates from global events
   useEffect(() => {
     if (!user?.id) return;
     const handleProfileUpdated = () => {
-      logisticsService.getProviderProfile(user.id)
-        .then((prof) => {
-          if (prof) {
-            setProfile(prof);
-            refreshData(prof.coverageArea);
-          }
-        })
-        .catch((err) => console.warn('Failed to refresh provider profile:', err));
+      setRefreshTrigger((prev) => prev + 1);
     };
     window.addEventListener('of:profile-updated', handleProfileUpdated);
     return () => window.removeEventListener('of:profile-updated', handleProfileUpdated);
-  }, [user?.id, refreshData]);
+  }, [user?.id]);
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    setRefreshTrigger((prev) => prev + 1);
+  };
 
   const handleAvailabilityChange = async (newStatus: ProviderAvailability) => {
     setAvailability(newStatus);
@@ -136,7 +157,7 @@ export const ProviderDashboardPage: React.FC = () => {
 
     const statusLabels: Record<ProviderAvailability, string> = {
       available: 'Online & Available for Dispatches',
-      busy: 'Busy (High Active Dispatch Load)',
+      busy: 'Busy (Active Dispatch Queue)',
       unavailable: 'Offline / Unavailable',
     };
 
@@ -145,7 +166,8 @@ export const ProviderDashboardPage: React.FC = () => {
       description: `Your status is now ${statusLabels[newStatus]}.`,
       type: newStatus === 'available' ? 'success' : newStatus === 'busy' ? 'warning' : 'info',
     });
-    await refreshData(profile?.coverageArea);
+
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   const handleAcceptJob = async (job: DeliveryRecord) => {
@@ -153,20 +175,20 @@ export const ProviderDashboardPage: React.FC = () => {
     if (updated) {
       addToast({
         title: 'Dispatch Accepted!',
-        description: `Delivery ${job.id} is now assigned to your fleet queue.`,
+        description: `Order ${job.trackingCode || job.id} assigned to your active queue.`,
         type: 'success',
       });
       setSelectedJob(null);
-      await refreshData(profile?.coverageArea);
-      setActiveTab('assigned');
+      setRefreshTrigger((prev) => prev + 1);
+      setActiveTab('active');
     } else {
       addToast({
-        title: 'Opportunity No Longer Available',
-        description: `Delivery ${job.id} has already been assigned to another provider or cancelled.`,
+        title: 'Opportunity Unavailable',
+        description: `Order ${job.id} was already assigned to another provider or cancelled.`,
         type: 'error',
       });
       setSelectedJob(null);
-      await refreshData(profile?.coverageArea);
+      setRefreshTrigger((prev) => prev + 1);
     }
   };
 
@@ -174,11 +196,11 @@ export const ProviderDashboardPage: React.FC = () => {
     await deliveryService.declineOpportunity(jobId, providerId);
     addToast({
       title: 'Opportunity Declined',
-      description: `OrderFlow has routed delivery ${jobId} to the next eligible provider candidate.`,
+      description: `Delivery ${jobId} routed to the next available provider candidate.`,
       type: 'info',
     });
     setSelectedJob(null);
-    await refreshData(profile?.coverageArea);
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   const handleUpdateStatus = async (jobId: string, newStatus: DeliveryStatus) => {
@@ -191,14 +213,14 @@ export const ProviderDashboardPage: React.FC = () => {
       };
       addToast({
         title: 'Status Updated',
-        description: `Delivery ${jobId} status updated to ${statusLabels[newStatus] || newStatus}.`,
+        description: `Delivery updated to ${statusLabels[newStatus] || newStatus}.`,
         type: 'info',
       });
-      await refreshData(profile?.coverageArea);
+      setRefreshTrigger((prev) => prev + 1);
     } else {
       addToast({
         title: 'Status Update Failed',
-        description: `Unable to transition delivery ${jobId} to ${newStatus}. Please verify your permissions or try again.`,
+        description: `Unable to transition delivery ${jobId} to ${newStatus}.`,
         type: 'error',
       });
     }
@@ -231,7 +253,7 @@ export const ProviderDashboardPage: React.FC = () => {
       return;
     }
     if (podModalJob.requirePhotoProof && !podPhoto) {
-      setPodError('Vendor has required photo proof of delivery. Please snap or upload a handover photo.');
+      setPodError('Vendor has required photo proof of delivery. Please capture or upload a handover photo.');
       return;
     }
 
@@ -256,7 +278,7 @@ export const ProviderDashboardPage: React.FC = () => {
         setPodModalJob(null);
         setPodPin('');
         setPodPhoto(undefined);
-        await refreshData(profile?.coverageArea);
+        setRefreshTrigger((prev) => prev + 1);
       } else {
         setPodError(res.error || 'Failed to verify Proof of Delivery.');
       }
@@ -268,695 +290,631 @@ export const ProviderDashboardPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="of-provider-dashboard">
-      {/* Top Banner Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 'var(--space-4)',
-          marginBottom: 'var(--space-6)',
-          paddingBottom: 'var(--space-6)',
-          borderBottom: '1px solid var(--color-border-default)',
-        }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-1)' }}>
-            <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              Fleet Operations
-            </h1>
-          </div>
-          <p style={{ color: 'var(--color-text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-            Welcome back, <strong>{providerName}</strong>. Manage your dispatches and real-time fleet availability.
-          </p>
-        </div>
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.id) return;
 
-        {/* Interactive Provider Availability Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'var(--color-bg-subtle)',
-              border: '1px solid var(--color-border-default)',
-              borderRadius: 'var(--radius-full)',
-              padding: '3px',
-            }}
-          >
+    setIsSavingProfile(true);
+    try {
+      await logisticsService.updateProviderProfile(user.id, {
+        providerName: editProviderName.trim(),
+        coverageArea: editCoverageArea.trim(),
+      });
+
+      addToast({
+        title: 'Profile Updated',
+        description: 'Fleet details saved successfully.',
+        type: 'success',
+      });
+
+      setProfileSheetOpen(false);
+      setRefreshTrigger((prev) => prev + 1);
+      window.dispatchEvent(new CustomEvent('of:profile-updated'));
+    } catch (err) {
+      console.error('Failed to update provider profile:', err);
+      addToast({
+        title: 'Update Failed',
+        description: 'Unable to save profile changes.',
+        type: 'error',
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleRoleSwitch = async () => {
+    setProfileSheetOpen(false);
+    const { error } = await setRole('vendor');
+    if (!error) {
+      addToast({
+        title: 'Switched Workspace',
+        description: 'Now operating in Merchant / Vendor workspace.',
+        type: 'info',
+      });
+      navigate('/vendor/dashboard');
+    }
+  };
+
+  const handleSignOut = () => {
+    setProfileSheetOpen(false);
+    signOut();
+    navigate('/login');
+  };
+
+  // Real data metrics computation
+  const activeAssignedDeliveries = assignedDeliveries.filter((d) => d.status !== 'delivered');
+  const completedDeliveries = assignedDeliveries.filter((d) => d.status === 'delivered');
+  // Earnings are strictly computed from actual completed delivery records
+  const totalCompletedEarnings = completedDeliveries.reduce(
+    (sum, d) => sum + (d.estimatedPrice || 0),
+    0
+  );
+
+  // Tab filter items
+  const filterPills: FilterPillItem[] = [
+    { key: 'opportunities', label: 'Available Offers', count: opportunities.length },
+    { key: 'active', label: 'Active Jobs', count: activeAssignedDeliveries.length },
+    { key: 'completed', label: 'Delivered', count: completedDeliveries.length },
+  ];
+
+  return (
+    <div className="of-rider-page" data-testid="rider-dashboard-page">
+      {/* 1. Mobile Safe Header */}
+      <MobileHeader
+        title={providerName}
+        subtitle={profile?.coverageArea || 'Last-Mile Fleet'}
+        workspaceBadge="Courier"
+        rightAction={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button
+              type="button"
+              className={`of-m-icon-btn ${isRefreshing ? 'is-spinning' : ''}`}
+              onClick={handleRefresh}
+              aria-label="Refresh courier feed"
+              title="Refresh feed"
+              data-testid="rider-refresh-btn"
+            >
+              <RotateCw size={20} />
+            </button>
+            <button
+              type="button"
+              className="of-m-icon-btn"
+              onClick={() => setProfileSheetOpen(true)}
+              aria-label="View Fleet Profile"
+              title="Fleet Profile"
+              data-testid="rider-profile-btn"
+            >
+              <UserIcon size={20} />
+            </button>
+          </div>
+        }
+      />
+
+      <div className="of-rider-container">
+        {/* 2. Availability Segmented Switcher (48px Touch Minimum) */}
+        <section aria-label="Rider Availability">
+          <div className="of-rider-availability-wrapper" data-testid="rider-availability-toggle">
             <button
               type="button"
               onClick={() => handleAvailabilityChange('available')}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--font-size-xs)',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: availability === 'available' ? '#10B981' : 'transparent',
-                color: availability === 'available' ? '#ffffff' : 'var(--color-text-secondary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'background var(--transition-fast), color var(--transition-fast)',
-              }}
+              className={`of-rider-avail-btn is-online ${availability === 'available' ? 'active' : ''}`}
+              data-testid="avail-online-btn"
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'available' ? '#ffffff' : '#10B981', transition: 'background var(--transition-fast)' }} />
-              Online
+              <span className="of-rider-avail-dot" aria-hidden="true" />
+              <span>Online</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleAvailabilityChange('busy')}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--font-size-xs)',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: availability === 'busy' ? '#F59E0B' : 'transparent',
-                color: availability === 'busy' ? '#ffffff' : 'var(--color-text-secondary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'background var(--transition-fast), color var(--transition-fast)',
-              }}
+              className={`of-rider-avail-btn is-busy ${availability === 'busy' ? 'active' : ''}`}
+              data-testid="avail-busy-btn"
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'busy' ? '#ffffff' : '#F59E0B', transition: 'background var(--transition-fast)' }} />
-              Busy
+              <span className="of-rider-avail-dot" aria-hidden="true" />
+              <span>Busy</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleAvailabilityChange('unavailable')}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--font-size-xs)',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer',
-                background: availability === 'unavailable' ? '#6B7280' : 'transparent',
-                color: availability === 'unavailable' ? '#ffffff' : 'var(--color-text-secondary)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                transition: 'background var(--transition-fast), color var(--transition-fast)',
-              }}
+              className={`of-rider-avail-btn is-offline ${availability === 'unavailable' ? 'active' : ''}`}
+              data-testid="avail-offline-btn"
             >
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: availability === 'unavailable' ? '#ffffff' : '#9CA3AF', transition: 'background var(--transition-fast)' }} />
-              Offline
+              <span className="of-rider-avail-dot" aria-hidden="true" />
+              <span>Offline</span>
             </button>
           </div>
-        </div>
-      </div>
+        </section>
 
-      {/* Database/Network Refresh Error Alert Banner */}
-      {refreshError && (
-        <div
-          role="alert"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            padding: 'var(--space-4)',
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.25)',
-            borderRadius: 'var(--radius-md)',
-            color: '#DC2626',
-            fontSize: 'var(--font-size-sm)',
-            marginBottom: 'var(--space-6)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <AlertCircle size={18} />
-            <span>{refreshError}</span>
+        {/* 3. Offline Notice Banner */}
+        {availability === 'unavailable' && (
+          <div className="of-rider-offline-banner" role="status" data-testid="rider-offline-banner">
+            <AlertCircle size={20} style={{ flexShrink: 0 }} />
+            <span>You are currently <strong>Offline</strong>. Switch to <strong>Online</strong> to receive live dispatch opportunities.</span>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refreshData(profile?.coverageArea)} disabled={isLoading}>
-            Retry
-          </Button>
-        </div>
-      )}
+        )}
 
-      {/* Targeted Incoming Opportunity Alert Card */}
-      {targetedOpportunity && availability !== 'unavailable' && (
-        <div
-          style={{
-            background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(16, 185, 129, 0.06))',
-            border: '2px solid var(--color-brand-primary)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 'var(--space-5)',
-            marginBottom: 'var(--space-6)',
-            boxShadow: '0 4px 16px rgba(37, 99, 235, 0.08)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <Badge variant="brand">NEW TARGETED DISPATCH OPPORTUNITY</Badge>
-              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
+        {/* 4. High-Priority Targeted Opportunity Card */}
+        {targetedOpportunity && availability !== 'unavailable' && (
+          <section className="of-rider-targeted-card" data-testid="targeted-opportunity-card">
+            <div className="of-targeted-top">
+              <span className="of-targeted-badge">
+                <span className="of-targeted-live-dot" />
+                NEW TARGETED DISPATCH
+              </span>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', color: 'var(--m-color-brand-accent)' }}>
                 {targetedOpportunity.trackingCode || targetedOpportunity.id}
               </span>
             </div>
 
-            <span
-              style={{
-                fontSize: 'var(--font-size-xs)',
-                color: '#10B981',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                background: 'rgba(16, 185, 129, 0.1)',
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-full)',
-              }}
-            >
-              <span
-                style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: '#10B981',
-                  display: 'inline-block',
-                  animation: 'pulse 1.5s infinite',
-                }}
-              />
-              New Opportunity
-            </span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)', marginBottom: 'var(--space-4)' }}>
             <div>
-              <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: 'var(--color-text-primary)', margin: '0 0 2px 0' }}>
+              <h3 style={{ fontSize: 'var(--m-text-base)', fontWeight: 700, color: 'var(--m-color-text-primary)', margin: '0 0 2px 0' }}>
                 {targetedOpportunity.productName}
               </h3>
-              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+              <p style={{ margin: 0, fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)' }}>
                 Vendor: <strong>{targetedOpportunity.vendorName}</strong> • {targetedOpportunity.package.weightKg} kg ({targetedOpportunity.package.packageType})
               </p>
             </div>
 
-            <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 700 }}>PICKUP:</span>
-              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                {targetedOpportunity.pickup.address} ({targetedOpportunity.pickup.city})
-              </p>
-            </div>
-
-            <div>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 700 }}>DROP-OFF:</span>
-              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                {targetedOpportunity.destination.address} ({targetedOpportunity.destination.city})
-              </p>
-            </div>
-
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                Payout
-              </span>
-              <p style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#10B981', margin: 0 }}>
-                ₦{targetedOpportunity.estimatedPrice.toLocaleString()}
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid rgba(0, 0, 0, 0.08)' }}>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleDeclineJob(targetedOpportunity.id)}
-              leftIcon={<XCircle size={16} color="var(--color-warning)" />}
-            >
-              Decline Opportunity
-            </Button>
-
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => handleAcceptJob(targetedOpportunity)}
-              leftIcon={<CheckCircle2 size={16} />}
-            >
-              Accept Dispatch
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Offline Alert if Unavailable */}
-      {availability === 'unavailable' && (
-        <div
-          style={{
-            padding: 'var(--space-4) var(--space-5)',
-            background: 'var(--color-bg-subtle)',
-            border: '1px solid var(--color-border-default)',
-            borderRadius: 'var(--radius-md)',
-            marginBottom: 'var(--space-6)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--space-3)',
-          }}
-        >
-          <AlertCircle size={20} color="var(--color-text-tertiary)" />
-          <p style={{ margin: 0, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-            You are currently <strong>Offline</strong>. Switch status to <strong>Online</strong> to receive OrderFlow dispatch opportunities.
-          </p>
-        </div>
-      )}
-
-      {/* Grid Layout — responsive: 2-col on wide, 1-col on mobile */}
-      <div className="of-provider-grid">
-        {/* Main Section */}
-        <div>
-          {/* Navigation Tabs */}
-          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)', borderBottom: '1px solid var(--color-border-default)' }}>
-            <button
-              onClick={() => setActiveTab('opportunities')}
-              style={{
-                padding: 'var(--space-3) var(--space-4)',
-                fontWeight: 600,
-                fontSize: 'var(--font-size-sm)',
-                color: activeTab === 'opportunities' ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
-                borderBottom: activeTab === 'opportunities' ? '2px solid var(--color-brand-primary)' : '2px solid transparent',
-                background: 'transparent',
-                borderTop: 'none',
-                borderLeft: 'none',
-                borderRight: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-              }}
-            >
-              Available Opportunities ({opportunities.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('assigned')}
-              style={{
-                padding: 'var(--space-3) var(--space-4)',
-                fontWeight: 600,
-                fontSize: 'var(--font-size-sm)',
-                color: activeTab === 'assigned' ? 'var(--color-brand-primary)' : 'var(--color-text-secondary)',
-                borderBottom: activeTab === 'assigned' ? '2px solid var(--color-brand-primary)' : '2px solid transparent',
-                background: 'transparent',
-                borderTop: 'none',
-                borderLeft: 'none',
-                borderRight: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-              }}
-            >
-              My Active Deliveries ({assignedDeliveries.length})
-            </button>
-          </div>
-
-          {/* Tab 1: Available Opportunities */}
-          {activeTab === 'opportunities' && (
-            <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
-                <div>
-                  <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                    Open Delivery Requests
-                  </h2>
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                    Requests waiting for last-mile pickup in {profile?.coverageArea || 'your service area'}
-                  </span>
-                </div>
-                <Badge variant="success">{opportunities.length} Open</Badge>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 'var(--m-text-xs)', background: 'var(--m-color-bg-surface)', padding: '10px', borderRadius: 'var(--m-radius-md)' }}>
+              <div>
+                <strong style={{ color: 'var(--m-color-brand-accent)' }}>PICKUP: </strong>
+                <span>{targetedOpportunity.pickup.address} ({targetedOpportunity.pickup.city})</span>
               </div>
+              <div>
+                <strong style={{ color: 'var(--m-status-success-dot)' }}>DROPOFF: </strong>
+                <span>{targetedOpportunity.destination.address} ({targetedOpportunity.destination.city})</span>
+              </div>
+            </div>
 
-              {isLoading ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-                  <Clock size={32} color="var(--color-brand-accent)" style={{ marginBottom: 'var(--space-2)', animation: 'spin 2s linear infinite' }} />
-                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                    Loading available delivery opportunities...
-                  </p>
-                </div>
-              ) : opportunities.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-                  <Truck size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
-                  <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    No open delivery requests
-                  </h3>
-                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-                    New vendor orders will populate here automatically.
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  {opportunities.map((opp) => (
-                    <div
-                      key={opp.id}
-                      style={{
-                        background: 'var(--color-bg-subtle)',
-                        border: '1px solid var(--color-border-default)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: 'var(--space-4)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--space-3)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginBottom: '2px' }}>
-                            <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                              {opp.trackingCode || opp.id}
-                            </span>
-                            <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
-                              {opp.productName}
-                            </h3>
-                          </div>
-                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                            Vendor: {opp.vendorName} • {opp.package.weightKg} kg ({opp.package.packageType})
-                          </span>
-                        </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Payout Fare
+              </span>
+              <span style={{ fontSize: 'var(--m-text-xl)', fontWeight: 800, color: 'var(--m-status-success-dot)' }}>
+                ₦{targetedOpportunity.estimatedPrice.toLocaleString()}
+              </span>
+            </div>
 
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                            Payout
-                          </span>
-                          <p style={{ fontSize: 'var(--font-size-base)', fontWeight: 700, color: '#10B981', margin: 0 }}>
-                            ₦{opp.estimatedPrice.toLocaleString()}
-                          </p>
-                        </div>
+            <div className="of-targeted-actions">
+              <button
+                type="button"
+                className="of-targeted-btn decline"
+                onClick={() => handleDeclineJob(targetedOpportunity.id)}
+                data-testid="targeted-decline-btn"
+              >
+                <XCircle size={16} />
+                <span>Decline</span>
+              </button>
+              <button
+                type="button"
+                className="of-targeted-btn accept"
+                onClick={() => handleAcceptJob(targetedOpportunity)}
+                data-testid="targeted-accept-btn"
+              >
+                <CheckCircle2 size={16} />
+                <span>Accept Job</span>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* 5. Error State Banner */}
+        {refreshError && (
+          <div className="of-merchant-error-banner" role="alert" data-testid="rider-error-banner">
+            <AlertCircle size={22} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div className="of-merchant-error-content">
+              <p className="of-merchant-error-title">Unable to sync opportunities</p>
+              <p className="of-merchant-error-desc">{refreshError}</p>
+              <button
+                type="button"
+                className="of-merchant-cta-btn"
+                style={{ minHeight: '38px', padding: '0 14px', fontSize: '13px' }}
+                onClick={handleRefresh}
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 6. Operational Glanceable Metrics */}
+        <section className="of-rider-metrics-grid" aria-label="Courier Operational Metrics">
+          <div className="of-m-metric-card" data-testid="metric-open-offers">
+            <div className="of-m-metric-top">
+              <span className="of-m-metric-label">Open Offers</span>
+              <div className="of-m-metric-icon info">
+                <Compass size={16} />
+              </div>
+            </div>
+            <p className="of-m-metric-value">{opportunities.length}</p>
+          </div>
+
+          <div className="of-m-metric-card" data-testid="metric-active-jobs">
+            <div className="of-m-metric-top">
+              <span className="of-m-metric-label">Active Jobs</span>
+              <div className="of-m-metric-icon warning">
+                <Truck size={16} />
+              </div>
+            </div>
+            <p className="of-m-metric-value">{activeAssignedDeliveries.length}</p>
+          </div>
+
+          <div className="of-m-metric-card" data-testid="metric-completed-jobs">
+            <div className="of-m-metric-top">
+              <span className="of-m-metric-label">Delivered</span>
+              <div className="of-m-metric-icon success">
+                <CheckCircle2 size={16} />
+              </div>
+            </div>
+            <p className="of-m-metric-value">{completedDeliveries.length}</p>
+          </div>
+
+          <div className="of-m-metric-card" data-testid="metric-real-earnings">
+            <div className="of-m-metric-top">
+              <span className="of-m-metric-label">Settled Payout</span>
+              <div className="of-m-metric-icon success">
+                <Banknote size={16} />
+              </div>
+            </div>
+            <p className="of-m-metric-value" style={{ fontSize: '1.125rem' }}>
+              ₦{totalCompletedEarnings.toLocaleString()}
+            </p>
+          </div>
+        </section>
+
+        {/* 7. Filter Carousel */}
+        <StatusFilterPills
+          items={filterPills}
+          selectedKey={activeTab}
+          onSelect={setActiveTab}
+        />
+
+        {/* 8. Deliveries Feed */}
+        <section aria-label="Courier Jobs Feed">
+          {isLoading ? (
+            <div data-testid="rider-skeleton-loader">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="of-m-skeleton-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                    <div className="of-m-skeleton-line" style={{ width: '90px', height: '22px' }} />
+                    <div className="of-m-skeleton-line" style={{ width: '80px', height: '22px' }} />
+                  </div>
+                  <div className="of-m-skeleton-line" style={{ width: '100%', height: '40px' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px', paddingTop: '8px' }}>
+                    <div className="of-m-skeleton-line" style={{ width: '120px', height: '24px' }} />
+                    <div className="of-m-skeleton-line" style={{ width: '50px', height: '24px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : activeTab === 'opportunities' ? (
+            // TAB 1: Available Opportunities
+            opportunities.length === 0 ? (
+              <div className="of-merchant-empty-state" data-testid="rider-empty-opportunities">
+                <div className="of-m-empty-icon-box">
+                  <Compass size={30} />
+                </div>
+                <h4 className="of-m-empty-title">No open delivery requests</h4>
+                <p className="of-m-empty-desc">
+                  New orders in {profile?.coverageArea || 'your service territory'} will appear here instantly via live dispatch.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="rider-opportunities-list">
+                {opportunities.map((opp) => (
+                  <article key={opp.id} className="of-rider-job-item" data-testid={`opportunity-item-${opp.id}`}>
+                    <div className="of-rider-job-header">
+                      <div>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', color: 'var(--m-color-brand-accent)' }}>
+                          {opp.trackingCode || opp.id}
+                        </span>
+                        <h3 style={{ fontSize: 'var(--m-text-base)', fontWeight: 700, color: 'var(--m-color-text-primary)', margin: '2px 0 0 0' }}>
+                          {opp.productName}
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)' }}>
+                          Vendor: {opp.vendorName} • {opp.package.weightKg} kg ({opp.package.packageType})
+                        </p>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-2)', fontSize: 'var(--font-size-xs)', background: 'var(--color-bg-surface)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <MapPin size={14} color="var(--color-brand-accent)" />
-                          <span><strong>Pickup:</strong> {opp.pickup.address} ({opp.pickup.city})</span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Navigation size={14} color="#10B981" />
-                          <span><strong>Dropoff:</strong> {opp.destination.address} ({opp.destination.city})</span>
-                        </div>
-                      </div>
+                      <span className="of-rider-payout-highlight">
+                        ₦{opp.estimatedPrice.toLocaleString()}
+                      </span>
+                    </div>
 
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setSelectedJob(opp)}
-                        >
-                          View & Accept Job
-                        </Button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: 'var(--m-text-xs)', background: 'var(--m-color-bg-subtle)', padding: '8px 10px', borderRadius: 'var(--m-radius-sm)' }}>
+                      <div>
+                        <strong style={{ color: 'var(--m-color-brand-accent)' }}>Pickup: </strong>
+                        <span>{opp.pickup.address} ({opp.pickup.city})</span>
+                      </div>
+                      <div>
+                        <strong style={{ color: 'var(--m-status-success-dot)' }}>Dropoff: </strong>
+                        <span>{opp.destination.address} ({opp.destination.city})</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
-          {/* Tab 2: My Active Deliveries */}
-          {activeTab === 'assigned' && (
-            <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-5)' }}>
-                <div>
-                  <h2 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-text-primary)', margin: 0 }}>
-                    My Active Dispatches
-                  </h2>
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>
-                    Deliveries assigned to your fleet
-                  </span>
-                </div>
-                <Badge variant="info">{assignedDeliveries.length} Active</Badge>
+                    <div className="of-rider-action-row">
+                      <button
+                        type="button"
+                        className="of-targeted-btn accept"
+                        style={{ minHeight: '40px', padding: '0 16px' }}
+                        onClick={() => setSelectedJob(opp)}
+                        data-testid={`view-accept-btn-${opp.id}`}
+                      >
+                        <span>View & Accept</span>
+                      </button>
+                    </div>
+                  </article>
+                ))}
               </div>
-
-              {isLoading ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-                  <Clock size={32} color="var(--color-brand-accent)" style={{ marginBottom: 'var(--space-2)', animation: 'spin 2s linear infinite' }} />
-                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                    Loading active dispatches...
-                  </p>
+            )
+          ) : activeTab === 'active' ? (
+            // TAB 2: Active Assigned Deliveries
+            activeAssignedDeliveries.length === 0 ? (
+              <div className="of-merchant-empty-state" data-testid="rider-empty-active">
+                <div className="of-m-empty-icon-box">
+                  <Truck size={30} />
                 </div>
-              ) : assignedDeliveries.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 'var(--space-8) 0' }}>
-                  <Clock size={36} color="var(--color-text-tertiary)" style={{ marginBottom: 'var(--space-2)' }} />
-                  <h3 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    No active dispatches
-                  </h3>
-                  <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>
-                    Accept requests from the Available Opportunities tab to get started.
-                  </p>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                  {assignedDeliveries.map((job) => (
-                    <div
-                      key={job.id}
-                      style={{
-                        background: 'var(--color-bg-subtle)',
-                        border: '1px solid var(--color-border-default)',
-                        borderRadius: 'var(--radius-md)',
-                        padding: 'var(--space-4)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 'var(--space-3)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)' }}>
-                            {job.trackingCode || job.id}
-                          </span>
-                          <h3 style={{ fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>
-                            {job.productName}
-                          </h3>
-                        </div>
-                      <Badge
-                          variant={
-                            job.status === 'delivered'
-                              ? 'success'
-                              : job.status === 'in_transit'
-                              ? 'brand'
-                              : 'warning'
-                          }
-                        >
-                          {job.status === 'delivered'
-                            ? 'Delivered'
-                            : job.status === 'in_transit'
-                            ? 'In Transit'
-                            : job.status === 'provider_selected'
-                            ? 'Matched'
-                            : job.status === 'awaiting_pickup'
-                            ? 'Awaiting Pickup'
-                            : job.status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
-                        </Badge>
+                <h4 className="of-m-empty-title">No active dispatches</h4>
+                <p className="of-m-empty-desc">
+                  Accept an open request from the Available Offers tab to start your delivery run.
+                </p>
+                <button
+                  type="button"
+                  className="of-merchant-cta-btn"
+                  onClick={() => setActiveTab('opportunities')}
+                  data-testid="rider-view-offers-cta"
+                >
+                  View Open Offers
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="rider-active-list">
+                {activeAssignedDeliveries.map((job) => (
+                  <article key={job.id} className="of-rider-job-item" data-testid={`active-job-${job.id}`}>
+                    <div className="of-rider-job-header">
+                      <div>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', color: 'var(--m-color-brand-accent)' }}>
+                          {job.trackingCode || job.id}
+                        </span>
+                        <h3 style={{ fontSize: 'var(--m-text-base)', fontWeight: 700, color: 'var(--m-color-text-primary)', margin: '2px 0 0 0' }}>
+                          {job.productName}
+                        </h3>
                       </div>
 
-                      <div style={{ fontSize: 'var(--font-size-xs)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
-                        <div>
-                          <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
-                            <strong>Pickup:</strong> {job.pickup.address} ({job.pickup.contactPhone || 'N/A'})
-                          </p>
-                        </div>
-                        <div>
-                          <p style={{ margin: 0, color: 'var(--color-text-secondary)' }}>
-                            <strong>Recipient:</strong> {job.recipient.name} ({job.recipient.phone})
-                          </p>
-                        </div>
-                      </div>
+                      <span
+                        className={`of-m-status-pill ${
+                          job.status === 'in_transit' ? 'of-m-status-info' : 'of-m-status-warning'
+                        }`}
+                      >
+                        <span className="of-m-status-dot" />
+                        {job.status === 'in_transit' ? 'In Transit' : 'Matched / Pickup'}
+                      </span>
+                    </div>
 
-                      {/* Payment & POD Requirements Badges */}
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--m-text-xs)', background: 'var(--m-color-bg-subtle)', padding: '10px', borderRadius: 'var(--m-radius-sm)' }}>
+                      <div>
+                        <strong>Pickup: </strong>
+                        <span>{job.pickup.address} ({job.pickup.city})</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div>
+                          <strong>Recipient: </strong>
+                          <span>{job.recipient.name}</span>
+                        </div>
+                        {job.recipient.phone && (
+                          <a
+                            href={`tel:${job.recipient.phone}`}
+                            className="of-rider-phone-link"
+                            aria-label={`Call recipient ${job.recipient.name}`}
+                          >
+                            <Phone size={12} />
+                            <span>{job.recipient.phone}</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Payment & Proof Chips */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '2px 8px',
+                          borderRadius: 'var(--m-radius-sm)',
+                          background: job.paymentMethod === 'cash_on_delivery' ? 'var(--m-status-warning-bg)' : 'var(--m-color-bg-surface)',
+                          color: job.paymentMethod === 'cash_on_delivery' ? 'var(--m-status-warning-text)' : 'var(--m-color-text-secondary)',
+                          border: '1px solid var(--m-color-border-subtle)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        <Banknote size={12} />
+                        {job.paymentMethod === 'cash_on_delivery'
+                          ? `COD: ₦${job.estimatedPrice.toLocaleString()}`
+                          : job.paymentMethod === 'pay_at_pickup'
+                          ? 'Pay at Pickup'
+                          : 'Prepaid Online'}
+                      </span>
+
+                      {job.requirePhotoProof && (
                         <span
                           style={{
                             fontSize: '11px',
                             fontWeight: 600,
                             padding: '2px 8px',
-                            borderRadius: 'var(--radius-sm)',
-                            background: job.paymentMethod === 'cash_on_delivery' ? 'rgba(245, 158, 11, 0.12)' : 'var(--color-bg-surface)',
-                            color: job.paymentMethod === 'cash_on_delivery' ? '#D97706' : 'var(--color-text-secondary)',
-                            border: '1px solid var(--color-border-subtle)',
+                            borderRadius: 'var(--m-radius-sm)',
+                            background: 'var(--m-status-info-bg)',
+                            color: 'var(--m-status-info-text)',
+                            border: '1px solid var(--m-status-info-border)',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '4px',
                           }}
                         >
-                          <Banknote size={12} />
-                          {job.paymentMethod === 'cash_on_delivery'
-                            ? `COD: ₦${job.estimatedPrice.toLocaleString()}`
-                            : job.paymentMethod === 'pay_at_pickup'
-                            ? 'Pay at Pickup'
-                            : 'Prepaid Online'}
+                          <Camera size={12} /> Photo Proof Required
                         </span>
-                        {job.requirePhotoProof && (
-                          <span
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              padding: '2px 8px',
-                              borderRadius: 'var(--radius-sm)',
-                              background: 'rgba(59, 130, 246, 0.1)',
-                              color: '#2563EB',
-                              border: '1px solid rgba(59, 130, 246, 0.2)',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                          >
-                            <Camera size={12} /> Photo Proof Required
-                          </span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                        {job.status !== 'in_transit' && job.status !== 'delivered' && (
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleUpdateStatus(job.id, 'in_transit')}
-                            leftIcon={<Truck size={14} />}
-                          >
-                            Mark In Transit
-                          </Button>
-                        )}
-                        {job.status !== 'delivered' && (
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            onClick={() => handleInitiateDeliveryCompletion(job)}
-                            leftIcon={<CheckCircle2 size={14} />}
-                          >
-                            Mark Delivered
-                          </Button>
-                        )}
-                        {job.status === 'delivered' && (
-                          <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <PackageCheck size={16} /> Order Completed
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  ))}
+
+                    {/* Operational Action Buttons */}
+                    <div className="of-rider-action-row">
+                      {job.status !== 'in_transit' && (
+                        <button
+                          type="button"
+                          className="of-targeted-btn decline"
+                          style={{ minHeight: '40px', padding: '0 14px' }}
+                          onClick={() => handleUpdateStatus(job.id, 'in_transit')}
+                          data-testid={`mark-in-transit-btn-${job.id}`}
+                        >
+                          <Truck size={14} />
+                          <span>Start Trip</span>
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className="of-targeted-btn accept"
+                        style={{ minHeight: '40px', padding: '0 16px' }}
+                        onClick={() => handleInitiateDeliveryCompletion(job)}
+                        data-testid={`complete-delivery-btn-${job.id}`}
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>Confirm Handover (POD)</span>
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
+          ) : (
+            // TAB 3: Completed Deliveries
+            completedDeliveries.length === 0 ? (
+              <div className="of-merchant-empty-state" data-testid="rider-empty-completed">
+                <div className="of-m-empty-icon-box">
+                  <PackageCheck size={30} />
                 </div>
-              )}
-            </div>
+                <h4 className="of-m-empty-title">No completed deliveries yet</h4>
+                <p className="of-m-empty-desc">
+                  Deliveries finished with verified customer PIN will appear here with settled earnings.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }} data-testid="rider-completed-list">
+                {completedDeliveries.map((job) => (
+                  <article key={job.id} className="of-rider-job-item" data-testid={`completed-job-${job.id}`}>
+                    <div className="of-rider-job-header">
+                      <div>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '0.75rem', color: 'var(--m-color-brand-accent)' }}>
+                          {job.trackingCode || job.id}
+                        </span>
+                        <h3 style={{ fontSize: 'var(--m-text-base)', fontWeight: 700, color: 'var(--m-color-text-primary)', margin: '2px 0 0 0' }}>
+                          {job.productName}
+                        </h3>
+                        <p style={{ margin: 0, fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)' }}>
+                          Delivered to {job.destination.city}
+                        </p>
+                      </div>
+
+                      <span className="of-rider-payout-highlight">
+                        +₦{job.estimatedPrice.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 'var(--m-text-xs)', color: 'var(--m-status-success-text)', fontWeight: 600 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <CheckCircle2 size={14} /> Handover Verified
+                      </span>
+                      {job.podCompletedAt && (
+                        <span style={{ color: 'var(--m-color-text-muted)', fontWeight: 400 }}>
+                          {new Date(job.podCompletedAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )
           )}
-        </div>
-
-        {/* Provider Profile Details Card */}
-        <div style={{ background: 'var(--color-bg-surface)', border: '1px solid var(--color-border-default)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-6)', height: 'fit-content' }}>
-          <h2 style={{ fontSize: 'var(--font-size-md)', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Truck size={18} color="var(--color-brand-accent)" />
-            Service Profile
-          </h2>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}>
-            <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                Company / Service Name
-              </span>
-              <p style={{ fontWeight: 600, color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {providerName}
-              </p>
-            </div>
-
-            <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                Type & Availability
-              </span>
-              <p style={{ color: 'var(--color-text-primary)', margin: '2px 0 0 0', textTransform: 'capitalize' }}>
-                {profile?.providerType || 'courier'} • <span style={{ color: '#10B981', fontWeight: 600 }}>Available</span>
-              </p>
-            </div>
-
-            <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                Coverage Area
-              </span>
-              <p style={{ color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {profile?.coverageArea || 'Ibadan'}
-              </p>
-            </div>
-
-            <div>
-              <span style={{ color: 'var(--color-text-tertiary)', fontSize: 'var(--font-size-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
-                Fleet Vehicles
-              </span>
-              <p style={{ color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {profile?.vehicleTypes && profile.vehicleTypes.length > 0 ? profile.vehicleTypes.join(', ') : 'Motorcycle, Delivery Van'}
-              </p>
-            </div>
-          </div>
-        </div>
+        </section>
       </div>
 
-      {/* Modal: Job Details & Acceptance */}
-      <Modal
-        isOpen={!!selectedJob}
+      {/* 9. BottomSheet: Job Details & Acceptance */}
+      <BottomSheet
+        isOpen={Boolean(selectedJob)}
         onClose={() => setSelectedJob(null)}
-        title={`Delivery Details (${selectedJob?.trackingCode || selectedJob?.id})`}
-        maxWidth="lg"
+        title={`Dispatch Details — ${selectedJob?.trackingCode || selectedJob?.id}`}
+        description="Review package parameters and delivery locations"
       >
         {selectedJob && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <h4 style={{ margin: '0 0 4px 0', fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }} data-testid="job-details-sheet">
+            <div style={{ padding: '12px', background: 'var(--m-color-bg-subtle)', borderRadius: 'var(--m-radius-md)' }}>
+              <h4 style={{ margin: '0 0 2px 0', fontSize: 'var(--m-text-base)', fontWeight: 700, color: 'var(--m-color-text-primary)' }}>
                 {selectedJob.productName}
               </h4>
-              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                Vendor: <strong>{selectedJob.vendorName}</strong> | Weight: {selectedJob.package.weightKg} kg
+              <p style={{ margin: 0, fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)' }}>
+                Vendor: <strong>{selectedJob.vendorName}</strong> • {selectedJob.package.weightKg} kg ({selectedJob.package.packageType})
               </p>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}>
-              <div style={{ border: '1px solid var(--color-border-default)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-brand-accent)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <MapPin size={14} /> PICKUP LOCATION
-                </span>
-                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{selectedJob.pickup.address}</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>{selectedJob.pickup.city}</p>
-                {selectedJob.pickup.contactPhone && (
-                  <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Phone size={12} /> {selectedJob.pickup.contactPhone}
-                  </p>
-                )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 'var(--m-text-sm)' }}>
+              <div style={{ border: '1px solid var(--m-color-border-default)', padding: '10px', borderRadius: 'var(--m-radius-md)' }}>
+                <strong style={{ color: 'var(--m-color-brand-accent)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  Pickup Address
+                </strong>
+                <p style={{ margin: '2px 0 0 0', fontWeight: 600 }}>{selectedJob.pickup.address}</p>
+                <p style={{ margin: '1px 0 0 0', fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)' }}>{selectedJob.pickup.city}</p>
               </div>
 
-              <div style={{ border: '1px solid var(--color-border-default)', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)' }}>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: '#10B981', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Navigation size={14} /> DROP-OFF DESTINATION
-                </span>
-                <p style={{ margin: '4px 0 0 0', fontWeight: 600 }}>{selectedJob.destination.address}</p>
-                <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>{selectedJob.destination.city}</p>
-                <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <UserIcon size={12} /> {selectedJob.recipient.name} ({selectedJob.recipient.phone})
+              <div style={{ border: '1px solid var(--m-color-border-default)', padding: '10px', borderRadius: 'var(--m-radius-md)' }}>
+                <strong style={{ color: 'var(--m-status-success-dot)', fontSize: '11px', textTransform: 'uppercase' }}>
+                  Dropoff Address
+                </strong>
+                <p style={{ margin: '2px 0 0 0', fontWeight: 600 }}>{selectedJob.destination.address}</p>
+                <p style={{ margin: '1px 0 0 0', fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)' }}>{selectedJob.destination.city}</p>
+                <p style={{ margin: '4px 0 0 0', fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)' }}>
+                  Recipient: {selectedJob.recipient.name} ({selectedJob.recipient.phone})
                 </p>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-default)' }}>
-              <div>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-muted)' }}>Estimated Payout</span>
-                <p style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, color: '#10B981', margin: 0 }}>
-                  ₦{selectedJob.estimatedPrice.toLocaleString()}
-                </p>
-              </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '8px', borderTop: '1px solid var(--m-color-border-subtle)' }}>
+              <span style={{ fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>
+                Fleet Payout
+              </span>
+              <span style={{ fontSize: 'var(--m-text-xl)', fontWeight: 800, color: 'var(--m-status-success-dot)' }}>
+                ₦{selectedJob.estimatedPrice.toLocaleString()}
+              </span>
+            </div>
 
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <Button variant="outline" onClick={() => setSelectedJob(null)}>
-                  Cancel
-                </Button>
-                <Button variant="primary" onClick={() => handleAcceptJob(selectedJob)}>
-                  Accept Dispatch
-                </Button>
-              </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+              <button
+                type="button"
+                className="of-targeted-btn decline"
+                style={{ flex: 1 }}
+                onClick={() => setSelectedJob(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="of-targeted-btn accept"
+                style={{ flex: 2 }}
+                onClick={() => handleAcceptJob(selectedJob)}
+                data-testid="sheet-accept-dispatch-btn"
+              >
+                Accept Dispatch
+              </button>
             </div>
           </div>
         )}
-      </Modal>
+      </BottomSheet>
 
-      {/* Modal: Proof of Delivery (POD) Handover Verification */}
-      <Modal
-        isOpen={!!podModalJob}
+      {/* 10. BottomSheet: Proof of Delivery (POD) Handover Verification */}
+      <BottomSheet
+        isOpen={Boolean(podModalJob)}
         onClose={() => {
           if (!isVerifyingPod) {
             setPodModalJob(null);
@@ -965,86 +923,33 @@ export const ProviderDashboardPage: React.FC = () => {
             setPodError(null);
           }
         }}
-        title={`Proof of Delivery — ${podModalJob?.trackingCode || podModalJob?.id}`}
-        maxWidth="md"
+        title={`Handover Verification — ${podModalJob?.trackingCode || podModalJob?.id}`}
+        description="Verify recipient PIN code and collect fare before handover"
       >
         {podModalJob && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            {/* Delivery Info */}
-            <div style={{ padding: 'var(--space-3)', background: 'var(--color-bg-subtle)', borderRadius: 'var(--radius-md)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-brand-accent)', textTransform: 'uppercase' }}>
-                  Handover Verification
-                </span>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
-                  Vendor: <strong>{podModalJob.vendorName}</strong>
-                </span>
-              </div>
-              <h4 style={{ margin: '0 0 2px 0', fontSize: 'var(--font-size-base)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                {podModalJob.productName}
-              </h4>
-              <p style={{ margin: 0, fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                Dropoff: {podModalJob.destination.address}, {podModalJob.destination.city} • Recipient: <strong>{podModalJob.recipient.name}</strong> ({podModalJob.recipient.phone})
-              </p>
-            </div>
-
-            {/* Payment Collection Prompt */}
-            {podModalJob.paymentMethod === 'cash_on_delivery' ? (
-              <div
-                style={{
-                  background: 'rgba(245, 158, 11, 0.1)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                }}
-              >
-                <Banknote size={24} color="#D97706" style={{ flexShrink: 0 }} />
+          <div className="of-rider-pod-sheet" data-testid="pod-handover-sheet">
+            {/* Cash on Delivery prompt if applicable */}
+            {podModalJob.paymentMethod === 'cash_on_delivery' && (
+              <div className="of-rider-cod-alert">
+                <Banknote size={24} style={{ flexShrink: 0 }} />
                 <div>
-                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#D97706', textTransform: 'uppercase' }}>
+                  <strong style={{ display: 'block', fontSize: '11px', textTransform: 'uppercase' }}>
                     Cash on Delivery Collection Required
+                  </strong>
+                  <span style={{ fontSize: 'var(--m-text-xs)', fontWeight: 600 }}>
+                    Collect ₦{podModalJob.estimatedPrice.toLocaleString()} from customer in cash or instant transfer before handing over.
                   </span>
-                  <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-sm)', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                    Collect ₦{podModalJob.estimatedPrice.toLocaleString()} from customer in cash or instant transfer before handing over the item.
-                  </p>
                 </div>
-              </div>
-            ) : podModalJob.paymentMethod === 'pay_at_pickup' ? (
-              <div
-                style={{
-                  background: 'rgba(59, 130, 246, 0.08)',
-                  border: '1px solid rgba(59, 130, 246, 0.2)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  fontSize: 'var(--font-size-xs)',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                <strong>Pay at Pickup:</strong> Delivery fare was settled with the vendor at dispatch. Do not collect from the recipient.
-              </div>
-            ) : (
-              <div
-                style={{
-                  background: 'rgba(16, 185, 129, 0.08)',
-                  border: '1px solid rgba(16, 185, 129, 0.2)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-3) var(--space-4)',
-                  fontSize: 'var(--font-size-xs)',
-                  color: 'var(--color-text-secondary)',
-                }}
-              >
-                <strong>Prepaid Online:</strong> Order paid digitally. No payment collection required from the recipient.
               </div>
             )}
 
-            {/* 4-Digit Code Input */}
+            {/* 4-digit PIN input */}
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)', textTransform: 'uppercase', marginBottom: 'var(--space-2)' }}>
-                4-Digit Recipient Handover Code <span style={{ color: '#DC2626' }}>*</span>
+              <label htmlFor="pod-pin-input" style={{ display: 'block', fontSize: 'var(--m-text-xs)', fontWeight: 700, color: 'var(--m-color-text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+                4-Digit Recipient Handover Code <span style={{ color: 'var(--m-status-error-dot)' }}>*</span>
               </label>
               <input
+                id="pod-pin-input"
                 type="text"
                 maxLength={4}
                 placeholder="4-digit PIN (e.g. 4892)"
@@ -1053,68 +958,41 @@ export const ProviderDashboardPage: React.FC = () => {
                   setPodPin(e.target.value.replace(/\D/g, ''));
                   setPodError(null);
                 }}
-                style={{
-                  width: '100%',
-                  padding: '12px var(--space-4)',
-                  fontSize: 'var(--font-size-xl)',
-                  fontFamily: 'monospace',
-                  letterSpacing: '6px',
-                  textAlign: 'center',
-                  fontWeight: 700,
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--color-border-default)',
-                  background: 'var(--color-bg-surface)',
-                  color: 'var(--color-text-primary)',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                }}
+                className="of-pod-pin-input"
+                data-testid="input-pod-pin"
               />
-              <p style={{ margin: '4px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
-                Ask the recipient for their 4-digit code (found on their OrderFlow tracking link / WhatsApp notification).
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.6875rem', color: 'var(--m-color-text-muted)' }}>
+                Ask the recipient for the 4-digit code shown on their tracking screen.
               </p>
             </div>
 
-            {/* Photo Proof Upload */}
-            <div style={{ borderTop: '1px solid var(--color-border-subtle)', paddingTop: 'var(--space-3)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <Camera size={14} color="var(--color-brand-accent)" />
-                  Handover Photo Proof {podModalJob.requirePhotoProof ? <span style={{ color: '#DC2626' }}>* (Required by Vendor)</span> : <span style={{ color: 'var(--color-text-tertiary)', fontWeight: 400 }}>(Optional)</span>}
-                </label>
+            {/* Camera photo proof upload */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: 'var(--m-text-xs)', fontWeight: 700, color: 'var(--m-color-text-secondary)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Camera size={14} color="var(--m-color-brand-accent)" />
+                  Handover Photo Proof {podModalJob.requirePhotoProof ? <span style={{ color: 'var(--m-status-error-dot)' }}>* (Required)</span> : <span style={{ color: 'var(--m-color-text-muted)', fontWeight: 400 }}>(Optional)</span>}
+                </span>
                 {podPhoto && (
                   <button
                     type="button"
                     onClick={() => setPodPhoto(undefined)}
-                    style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 'var(--font-size-xs)', cursor: 'pointer', padding: 0 }}
+                    style={{ background: 'none', border: 'none', color: 'var(--m-status-error-dot)', fontSize: 'var(--m-text-xs)', cursor: 'pointer', padding: 0 }}
                   >
-                    Remove Photo
+                    Remove
                   </button>
                 )}
               </div>
 
               {podPhoto ? (
-                <div style={{ position: 'relative', borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--color-border-default)', maxHeight: '180px' }}>
-                  <img src={podPhoto} alt="Proof of delivery preview" style={{ width: '100%', height: '180px', objectFit: 'cover' }} />
+                <div className="of-pod-photo-preview">
+                  <img src={podPhoto} alt="Handover proof" className="of-pod-photo-img" />
                 </div>
               ) : (
-                <label
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 'var(--space-2)',
-                    padding: 'var(--space-4)',
-                    border: '2px dashed var(--color-border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer',
-                    background: 'var(--color-bg-subtle)',
-                    textAlign: 'center',
-                  }}
-                >
-                  <Upload size={20} color="var(--color-text-tertiary)" />
-                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-                    Click to capture handover photo or upload image
+                <label className="of-pod-photo-zone">
+                  <Upload size={22} color="var(--m-color-text-muted)" />
+                  <span style={{ fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)', fontWeight: 500 }}>
+                    Tap to snap handover photo or upload file
                   </span>
                   <input
                     type="file"
@@ -1122,6 +1000,7 @@ export const ProviderDashboardPage: React.FC = () => {
                     capture="environment"
                     style={{ display: 'none' }}
                     onChange={handlePodPhotoUpload}
+                    data-testid="input-pod-photo"
                   />
                 </label>
               )}
@@ -1129,51 +1008,112 @@ export const ProviderDashboardPage: React.FC = () => {
 
             {/* Error Message */}
             {podError && (
-              <div
-                style={{
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  borderRadius: 'var(--radius-md)',
-                  padding: 'var(--space-3)',
-                  color: '#DC2626',
-                  fontSize: 'var(--font-size-xs)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                }}
-              >
+              <div className="of-merchant-error-banner" style={{ padding: '10px' }} data-testid="pod-error-message">
                 <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                <span>{podError}</span>
+                <span style={{ fontSize: 'var(--m-text-xs)' }}>{podError}</span>
               </div>
             )}
 
-            {/* Actions */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-default)' }}>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPodModalJob(null);
-                  setPodPin('');
-                  setPodPhoto(undefined);
-                  setPodError(null);
-                }}
-                disabled={isVerifyingPod}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleConfirmPodDelivery}
-                isLoading={isVerifyingPod}
-                leftIcon={<ShieldCheck size={16} />}
-              >
-                Verify & Complete Handover
-              </Button>
-            </div>
+            <button
+              type="button"
+              className="of-targeted-btn accept"
+              style={{ width: '100%', minHeight: '48px', marginTop: '6px' }}
+              onClick={handleConfirmPodDelivery}
+              disabled={isVerifyingPod}
+              data-testid="pod-verify-submit-btn"
+            >
+              <ShieldCheck size={18} />
+              <span>{isVerifyingPod ? 'Verifying...' : 'Verify & Complete Delivery'}</span>
+            </button>
           </div>
         )}
-      </Modal>
+      </BottomSheet>
+
+      {/* 11. BottomSheet: Provider Service Profile */}
+      <BottomSheet
+        isOpen={profileSheetOpen}
+        onClose={() => setProfileSheetOpen(false)}
+        title="Fleet & Logistics Profile"
+        description="Manage your courier service credentials and operational parameters"
+      >
+        <div className="of-merchant-profile-sheet" data-testid="rider-profile-sheet">
+          <div className="of-m-profile-hero">
+            <div className="of-m-profile-avatar" style={{ backgroundColor: 'var(--m-status-info-dot)' }}>
+              <Package size={24} />
+            </div>
+            <div className="of-m-profile-info">
+              <p className="of-m-profile-name">{providerName}</p>
+              <p className="of-m-profile-email">{user?.email}</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleSaveProfile} className="of-m-profile-form">
+            <div className="of-m-form-group">
+              <label htmlFor="provider-company-name" className="of-m-form-label">
+                Fleet / Company Name
+              </label>
+              <input
+                id="provider-company-name"
+                type="text"
+                className="of-m-form-input"
+                value={editProviderName}
+                onChange={(e) => setEditProviderName(e.target.value)}
+                placeholder="e.g. SwiftHaul Express"
+                required
+                data-testid="input-fleet-name"
+              />
+            </div>
+
+            <div className="of-m-form-group">
+              <label htmlFor="provider-coverage-area" className="of-m-form-label">
+                Primary Territory / Coverage
+              </label>
+              <input
+                id="provider-coverage-area"
+                type="text"
+                className="of-m-form-input"
+                value={editCoverageArea}
+                onChange={(e) => setEditCoverageArea(e.target.value)}
+                placeholder="e.g. Ibadan (Bodija, Ring Road), Lagos"
+                required
+                data-testid="input-coverage-area"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="of-merchant-cta-btn"
+              style={{ width: '100%', marginTop: '8px' }}
+              disabled={isSavingProfile}
+              data-testid="rider-save-profile-btn"
+            >
+              {isSavingProfile ? 'Saving...' : 'Save Changes'}
+            </button>
+          </form>
+
+          <div className="of-m-profile-actions">
+            <button
+              type="button"
+              className="of-m-action-btn-row"
+              onClick={handleRoleSwitch}
+              data-testid="rider-switch-role-btn"
+            >
+              <Repeat size={18} />
+              <span>Switch to Merchant / Vendor View</span>
+            </button>
+
+            <button
+              type="button"
+              className="of-m-action-btn-row is-danger"
+              onClick={handleSignOut}
+              data-testid="rider-sign-out-btn"
+            >
+              <LogOut size={18} />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+      </BottomSheet>
     </div>
   );
 };
-
