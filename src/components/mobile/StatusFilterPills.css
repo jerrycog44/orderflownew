@@ -1,0 +1,75 @@
+/* ============================================================================
+   ORDERFLOW MOBILE STATUS FILTER PILLS
+   Horizontal scroll carousel of thumb-tappable filter pills for list screens
+   ============================================================================ */
+
+.of-m-pills-container {
+  display: flex;
+  align-items: center;
+  gap: var(--m-space-2);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  padding: var(--m-space-2) var(--m-space-4);
+  background-color: var(--m-color-bg-app);
+}
+
+.of-m-pills-container::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.of-m-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 var(--m-space-3);
+  border-radius: var(--m-radius-full);
+  border: 1px solid var(--m-color-border-default);
+  background-color: var(--m-color-bg-surface);
+  color: var(--m-color-text-secondary);
+  font-size: var(--m-text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--m-transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.of-m-pill:active {
+  transform: scale(0.96);
+}
+
+/* Active Selected Pill */
+.of-m-pill.is-selected {
+  background-color: var(--m-color-brand-primary);
+  border-color: var(--m-color-brand-primary);
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.15);
+}
+
+/* Counter Badge inside pill */
+.of-m-pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  border-radius: var(--m-radius-full);
+  padding: 0 5px;
+  background-color: var(--m-color-bg-subtle);
+  color: var(--m-color-text-secondary);
+  transition: background-color var(--m-transition-fast), color var(--m-transition-fast);
+}
+
+.of-m-pill.is-selected .of-m-pill-count {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #FFFFFF;
+}

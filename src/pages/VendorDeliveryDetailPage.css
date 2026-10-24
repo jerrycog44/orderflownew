@@ -1,20 +1,26 @@
-/* Vendor Delivery Detail Page Styling */
+/* ============================================================================
+   ORDERFLOW VENDOR DELIVERY DETAIL PAGE STYLING
+   Mobile-first layout with safe area clearance, tactile cards & status tracking
+   ============================================================================ */
 
 .of-delivery-detail-container {
-  max-width: 920px;
+  max-width: 680px;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-4);
+  padding: var(--m-space-3) var(--m-space-4);
+  padding-bottom: calc(var(--m-bottom-nav-height) + var(--m-safe-bottom) + var(--m-space-8));
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
 }
 
 .of-delivery-detail-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-4);
-  padding-bottom: var(--space-6);
-  border-bottom: 1px solid var(--color-border-default);
-  margin-bottom: var(--space-6);
+  gap: var(--m-space-3);
+  padding-bottom: var(--m-space-4);
+  border-bottom: 1px solid var(--m-color-border-default);
 }
 
 .of-delivery-status-timeline {
@@ -22,19 +28,19 @@
   align-items: center;
   justify-content: space-between;
   position: relative;
-  margin: var(--space-6) 0;
-  padding: var(--space-5) var(--space-4);
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
+  margin: var(--m-space-2) 0;
+  padding: var(--m-space-4);
+  background: var(--m-color-bg-surface);
+  border: 1px solid var(--m-color-border-default);
+  border-radius: var(--m-radius-lg);
+  box-shadow: var(--m-shadow-card);
 }
 
 .of-timeline-step {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   z-index: 1;
   text-align: center;
 }
@@ -42,55 +48,56 @@
 .of-timeline-icon {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-full);
-  border: 2px solid var(--color-border-strong);
-  background: var(--color-bg-surface);
-  color: var(--color-text-tertiary);
+  border-radius: var(--m-radius-full);
+  border: 2px solid var(--m-color-border-strong);
+  background: var(--m-color-bg-surface);
+  color: var(--m-color-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast);
+  transition: all var(--m-transition-fast);
 }
 
 .of-timeline-step.completed .of-timeline-icon {
-  border-color: var(--color-brand-accent);
-  background: var(--color-brand-accent-light);
-  color: var(--color-brand-accent);
+  border-color: var(--m-color-brand-accent);
+  background: var(--m-color-brand-accent-subtle);
+  color: var(--m-color-brand-accent);
 }
 
 .of-timeline-step.active .of-timeline-icon {
-  border-color: var(--color-brand-accent);
-  background: var(--color-brand-accent);
+  border-color: var(--m-color-brand-accent);
+  background: var(--m-color-brand-accent);
   color: #FFFFFF;
+  box-shadow: 0 0 0 4px var(--m-color-brand-accent-subtle);
 }
 
 .of-timeline-label {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--m-color-text-secondary);
 }
 
 .of-timeline-line {
   flex: 1;
   height: 2px;
-  background: var(--color-border-default);
-  margin: 0 var(--space-2);
+  background: var(--m-color-border-default);
+  margin: 0 var(--m-space-2);
   align-self: flex-start;
   margin-top: 17px;
-  transition: background var(--transition-fast);
+  transition: background var(--m-transition-fast);
 }
 
 .of-timeline-line.completed {
-  background: var(--color-brand-accent);
+  background: var(--m-color-brand-accent);
 }
 
-/* Responsive: stack timeline vertically on very small screens */
-@media (max-width: 480px) {
+/* Responsive: timeline wraps cleanly on mobile */
+@media (max-width: 520px) {
   .of-delivery-status-timeline {
     flex-direction: column;
     align-items: flex-start;
-    gap: var(--space-4);
-    padding: var(--space-4);
+    gap: var(--m-space-3);
+    padding: var(--m-space-4);
   }
 
   .of-timeline-line {
@@ -99,13 +106,13 @@
 
   .of-timeline-step {
     flex-direction: row;
-    gap: var(--space-3);
+    gap: var(--m-space-3);
     width: 100%;
     text-align: left;
     align-items: center;
   }
 
   .of-timeline-label {
-    font-size: var(--font-size-sm);
+    font-size: var(--m-text-sm);
   }
 }

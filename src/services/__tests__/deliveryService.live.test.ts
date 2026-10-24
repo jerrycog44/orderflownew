@@ -115,6 +115,26 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
     expect(localStorage.getItem('of_dev_deliveries')).toBeNull();
   });
 
+  it('falls back to local storage when create_delivery_transactional RPC is missing from schema cache (PGRST202)', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find the function public.create_delivery_transactional(...) in the schema cache',
+      },
+    });
+
+    const result = await deliveryService.createDelivery(sampleInput);
+    expect(result).toBeDefined();
+    expect(result.id).toMatch(/^OF-\d+/);
+    expect(result.productName).toBe(sampleInput.productName);
+
+    // Verify written to localStorage
+    const stored = JSON.parse(localStorage.getItem('of_dev_deliveries') || '[]');
+    expect(stored.length).toBeGreaterThan(0);
+    expect(stored[0].id).toBe(result.id);
+  });
+
   it('getDeliveryById throws an error on database failure and returns null on 404', async () => {
     // 1. DB Error case
     mockFrom.mockReturnValueOnce({

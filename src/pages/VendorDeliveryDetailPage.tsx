@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft,
   Package,
   MapPin,
   Truck,
@@ -20,6 +19,7 @@ import { deliveryService } from '../services/deliveryService';
 import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../lib/whatsapp';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { MobileHeader } from '../components/mobile';
 import './VendorDeliveryDetailPage.css';
 
 const TIMELINE_STEPS = [
@@ -178,28 +178,27 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const currentStepIdx = getStepStatusIndex(delivery.status);
 
   return (
-    <div className="of-delivery-detail-container">
-      <button
-        type="button"
-        onClick={() => navigate('/vendor/dashboard')}
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: 'var(--color-text-secondary)',
-          fontSize: 'var(--font-size-sm)',
-          fontWeight: 600,
-          marginBottom: 'var(--space-4)',
-          padding: '0',
-          transition: 'color var(--transition-fast)',
-        }}
-      >
-        <ArrowLeft size={16} />
-        Back to Dashboard
-      </button>
+    <div className="of-delivery-detail-page">
+      <MobileHeader
+        title={delivery.trackingCode || delivery.id}
+        subtitle={delivery.productName}
+        showBack
+        onBack={() => navigate('/vendor/dashboard')}
+        workspaceBadge="Vendor"
+        rightAction={
+          <button
+            type="button"
+            className="of-m-icon-btn"
+            onClick={handleCopyLink}
+            title="Copy Tracking Link"
+            aria-label="Copy Tracking Link"
+          >
+            {copied ? <Check size={18} color="#16A34A" /> : <Copy size={18} />}
+          </button>
+        }
+      />
+
+      <div className="of-delivery-detail-container">
 
       {/* Header Info */}
       <div className="of-delivery-detail-header">
@@ -597,5 +596,6 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         </div>
       </div>
     </div>
+  </div>
   );
 };

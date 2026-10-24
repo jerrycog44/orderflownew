@@ -1,0 +1,137 @@
+/* ============================================================================
+   ORDERFLOW MOBILE BOTTOM NAVIGATION
+   Fixed thumb-friendly bottom bar adhering to 48px touch bounding box & safe area
+   ============================================================================ */
+
+.of-m-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  background-color: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--m-color-border-default);
+  padding-bottom: var(--m-safe-bottom);
+  box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.04);
+}
+
+.of-m-bottom-nav-inner {
+  height: var(--m-bottom-nav-height);
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 var(--m-space-2);
+}
+
+.of-m-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--m-touch-target-min);
+  padding: 6px var(--m-space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--m-radius-md);
+  color: var(--m-color-text-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--m-transition-fast);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.of-m-nav-item:active {
+  transform: scale(0.96);
+}
+
+.of-m-nav-item-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.of-m-nav-item-label {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 500;
+  line-height: 1.2;
+  margin-top: 2px;
+  letter-spacing: -0.01em;
+  transition: color var(--m-transition-fast);
+}
+
+/* Active Tab State */
+.of-m-nav-item.is-active {
+  color: var(--m-color-brand-accent);
+}
+
+.of-m-nav-item.is-active .of-m-nav-item-label {
+  font-weight: 700;
+  color: var(--m-color-brand-accent);
+}
+
+.of-m-nav-item.is-active .of-m-nav-item-icon-wrapper svg {
+  stroke-width: 2.4;
+}
+
+/* Accent Center Tab (e.g., Create Delivery button) */
+.of-m-nav-item.is-action-tab {
+  color: var(--m-color-text-inverse);
+}
+
+.of-m-nav-item.is-action-tab .of-m-action-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background-color: var(--m-color-brand-accent);
+  color: #FFFFFF;
+  border-radius: var(--m-radius-full);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  margin-top: -12px;
+  transition: transform var(--m-transition-fast), background-color var(--m-transition-fast);
+}
+
+.of-m-nav-item.is-action-tab:active .of-m-action-circle {
+  transform: scale(0.92);
+  background-color: var(--m-color-brand-accent-hover);
+}
+
+.of-m-nav-item.is-action-tab .of-m-nav-item-label {
+  color: var(--m-color-text-secondary);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.of-m-nav-item.is-action-tab.is-active .of-m-nav-item-label {
+  color: var(--m-color-brand-accent);
+  font-weight: 700;
+}
+
+/* Badge Indicator */
+.of-m-nav-badge {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  background-color: var(--m-status-error-dot);
+  color: #FFFFFF;
+  font-size: 0.625rem;
+  font-weight: 700;
+  min-width: 16px;
+  height: 16px;
+  border-radius: var(--m-radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 1.5px solid #FFFFFF;
+}

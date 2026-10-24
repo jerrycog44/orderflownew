@@ -1,0 +1,99 @@
+/* ============================================================================
+   ORDERFLOW MOBILE DESIGN TOKENS
+   Standardized mobile foundation for touch targets, safe areas & operational UI
+   ============================================================================ */
+
+:root {
+  /* Brand Core */
+  --m-color-brand-primary: #0F172A;       /* Slate 900 - Deep Ink Navy */
+  --m-color-brand-primary-light: #1E293B; /* Slate 800 - Elevated Card Surface */
+  --m-color-brand-accent: #2563EB;        /* Blue 600 - Primary Action, Links, Focus */
+  --m-color-brand-accent-hover: #1D4ED8;  /* Blue 700 - Tap Active State */
+  --m-color-brand-accent-subtle: #EFF6FF; /* Blue 50 - Active Tab / Selected Background */
+  --m-color-brand-accent-border: #BFDBFE; /* Blue 200 - Selection Border */
+
+  /* Neutral Canvas & Surfaces */
+  --m-color-bg-app: #F8FAFC;              /* Slate 50 - Standard Mobile Canvas */
+  --m-color-bg-surface: #FFFFFF;          /* Pure White - Card, Sheet & Input Surface */
+  --m-color-bg-subtle: #F1F5F9;           /* Slate 100 - Secondary Wells, Inactive Pills */
+  --m-color-bg-muted: #E2E8F0;            /* Slate 200 - Skeleton & Divider */
+
+  /* Text & Hierarchy */
+  --m-color-text-primary: #0F172A;        /* Slate 900 - Headings, Titles, Primary Values */
+  --m-color-text-secondary: #475569;      /* Slate 600 - Subtitles, Body, Metadata */
+  --m-color-text-muted: #64748B;          /* Slate 500 - Captions, Placeholders, Timestamps */
+  --m-color-text-disabled: #94A3B8;       /* Slate 400 - Disabled Labels */
+  --m-color-text-inverse: #FFFFFF;        /* White text for dark surfaces & primary buttons */
+
+  /* Borders & Dividers */
+  --m-color-border-default: #E2E8F0;      /* Slate 200 - Standard Card & Input Hairline */
+  --m-color-border-subtle: #F1F5F9;       /* Slate 100 - Sub-divider */
+  --m-color-border-strong: #CBD5E1;       /* Slate 300 - Active Focus & Selected Borders */
+
+  /* Semantic Statuses (4-tier system: BG, Border, Text, Accent Dot) */
+  --m-status-success-bg: #F0FDF4;         /* Green 50 */
+  --m-status-success-border: #BBF7D0;     /* Green 200 */
+  --m-status-success-text: #15803D;       /* Green 700 */
+  --m-status-success-dot: #16A34A;        /* Green 600 - Delivered / Available */
+
+  --m-status-warning-bg: #FFFBEB;         /* Amber 50 */
+  --m-status-warning-border: #FDE68A;     /* Amber 200 */
+  --m-status-warning-text: #B45309;       /* Amber 700 */
+  --m-status-warning-dot: #D97706;        /* Amber 600 - Searching / Busy / Opportunity */
+
+  --m-status-info-bg: #EFF6FF;            /* Blue 50 */
+  --m-status-info-border: #BFDBFE;        /* Blue 200 */
+  --m-status-info-text: #1D4ED8;          /* Blue 700 */
+  --m-status-info-dot: #2563EB;           /* Blue 600 - In Transit / Matched */
+
+  --m-status-error-bg: #FEF2F2;           /* Red 50 */
+  --m-status-error-border: #FECACA;       /* Red 200 */
+  --m-status-error-text: #B91C1C;         /* Red 700 */
+  --m-status-error-dot: #DC2626;          /* Red 600 - Cancelled / Unavailable / Failed */
+
+  /* Typography Scale */
+  --m-text-xs: 0.75rem;                   /* 12px - Overlines, badges, timestamps */
+  --m-text-sm: 0.8125rem;                 /* 13px - Secondary body, descriptions */
+  --m-text-base: 0.9375rem;               /* 15px - Primary card body, inputs, button text */
+  --m-text-md: 1.0625rem;                 /* 17px - Card titles, section headers */
+  --m-text-lg: 1.25rem;                   /* 20px - Screen headers, metric values */
+  --m-text-xl: 1.5rem;                    /* 24px - Large titles, total amounts */
+
+  /* Tap Target & Dimensions Guarantee */
+  --m-touch-target-min: 48px;             /* Minimum interactive bounding box */
+  --m-header-height: 56px;
+  --m-bottom-nav-height: 60px;
+
+  /* 8pt Base Spacing Grid */
+  --m-space-1: 4px;
+  --m-space-2: 8px;
+  --m-space-3: 12px;
+  --m-space-4: 16px;                      /* Standard mobile screen gutter */
+  --m-space-5: 20px;
+  --m-space-6: 24px;
+  --m-space-8: 32px;
+
+  /* Corner Radii */
+  --m-radius-xs: 4px;
+  --m-radius-sm: 6px;
+  --m-radius-md: 8px;
+  --m-radius-lg: 12px;
+  --m-radius-xl: 16px;
+  --m-radius-full: 9999px;
+
+  /* Mobile Elevation */
+  --m-shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05);
+  --m-shadow-elevated: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --m-shadow-sheet: 0 -4px 20px rgba(15, 23, 42, 0.12);
+  --m-shadow-fab: 0 4px 14px rgba(37, 99, 235, 0.35);
+
+  /* Safe Area Variables with Fallbacks */
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-safe-left: env(safe-area-inset-left, 0px);
+  --m-safe-right: env(safe-area-inset-right, 0px);
+
+  /* Standard Motion */
+  --m-transition-fast: 120ms ease-out;
+  --m-transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}

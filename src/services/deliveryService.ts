@@ -214,16 +214,16 @@ export const deliveryService = {
     const trackingCode = `OF-${randomNum}`;
     const now = new Date().toISOString();
 
-    const isAuto = data.dispatchMode === 'auto' || !data.providerId;
+    const isAuto = data.dispatchMode === 'auto' || !data.providerId || (isSupabaseConfigured && !isUuid(data.providerId));
     let initialStatus: DeliveryStatus = data.status || (isAuto ? 'opportunity_sent' : 'awaiting_pickup');
 
     if (isSupabaseConfigured) {
-      // If vendor is an unauthenticated mock ID and no Supabase session exists, skip live RPC to prevent anon 404
+      // If no active Supabase session exists, skip live RPC to prevent anon 404 (functions are restricted to authenticated role)
       let isLiveAuthSession = true;
       try {
         if (supabase.auth?.getSession) {
           const { data: sessionData } = await supabase.auth.getSession();
-          if (!sessionData?.session?.user && !isUuid(data.vendorId)) {
+          if (!sessionData?.session?.user) {
             isLiveAuthSession = false;
           }
         }

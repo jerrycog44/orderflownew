@@ -8,6 +8,7 @@ import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { useToast } from '../ui/Toast';
+import { MobileBottomNav } from '../mobile/MobileBottomNav';
 import './AppLayout.css';
 
 /**
@@ -245,6 +246,9 @@ export const AppLayout: React.FC = () => {
       <main id="app-main-content">
         <Outlet />
       </main>
+
+      {/* Mobile-only Bottom Navigation Bar */}
+      <MobileBottomNav />
 
       {/* Workspace Settings / Profile Edit Modal */}
       <Modal

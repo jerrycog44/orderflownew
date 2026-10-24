@@ -202,6 +202,22 @@
   flex: 1;
 }
 
+@media (min-width: 769px) {
+  .of-m-bottom-nav {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .of-app-header {
+    display: none !important;
+  }
+
+  #app-main-content {
+    padding-bottom: calc(var(--m-bottom-nav-height) + var(--m-safe-bottom));
+  }
+}
+
 @media (max-width: 640px) {
   .of-app-user-details {
     display: none;

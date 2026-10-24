@@ -1,5 +1,6 @@
 /* OrderFlow Global Styles & Utility Rules */
 @import './theme.css';
+@import './mobile-tokens.css';
 
 /* Box Sizing Reset */
 *, *::before, *::after {
