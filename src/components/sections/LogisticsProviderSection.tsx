@@ -1,55 +1,29 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Truck, ArrowRight } from 'lucide-react';
-import { Button } from '../ui/Button';
-import './LogisticsProviderSection.css';
+import { useLandingActions } from '../../lib/landingActions';
+import './landing.css';
 
-interface LogisticsProviderSectionProps {
-  onOpenLogisticsOnboarding?: () => void;
-}
-
-export const LogisticsProviderSection: React.FC<LogisticsProviderSectionProps> = ({
-  onOpenLogisticsOnboarding,
-}) => {
-  const navigate = useNavigate();
-
-  const handleProviderClick = () => {
-    if (onOpenLogisticsOnboarding) {
-      onOpenLogisticsOnboarding();
-    } else {
-      navigate('/signup?role=logistics_provider');
-    }
-  };
+export const LogisticsProviderSection: React.FC = () => {
+  const { signUpAsProvider } = useLandingActions();
 
   return (
-    <section id="logistics-providers" className="section of-logistics-section">
+    <section id="logistics-providers" className="lp-section lp-section-tint" aria-labelledby="providers-title">
       <div className="container">
-        <div className="of-logistics-card">
-          <div className="of-logistics-content">
-            <div className="of-logistics-badge">
-              <Truck size={14} />
-              <span>For Logistics Providers</span>
-            </div>
-
-            <h2 className="of-logistics-title">
-              Are you a logistics provider?
-            </h2>
-
-            <p className="of-logistics-description">
-              Join OrderFlow and receive delivery opportunities from vendors who need your service.
+        <div className="lp-band">
+          <div>
+            <span className="lp-kicker lp-kicker-light">
+              <Truck size={14} aria-hidden="true" /> For logistics providers
+            </span>
+            <h2 id="providers-title" className="lp-h2 lp-on-dark">Run a fleet or ride solo?</h2>
+            <p className="lp-lead lp-on-dark-muted">
+              Join OrderFlow to receive delivery opportunities from merchants in your coverage area, accept the jobs
+              you want, and keep your availability under your control.
             </p>
-
-            <div className="of-logistics-cta">
-              <Button
-                variant="secondary"
-                size="lg"
-                onClick={handleProviderClick}
-                rightIcon={<ArrowRight size={18} />}
-              >
-                Become a provider
-              </Button>
-            </div>
           </div>
+          <button type="button" className="lp-btn lp-btn-secondary" onClick={signUpAsProvider}>
+            <span>Become a provider</span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
         </div>
       </div>
     </section>

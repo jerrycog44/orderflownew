@@ -1,35 +1,11 @@
 import React from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { OrderFlowLogo } from '../ui/OrderFlowLogo';
+import { isAndroidAppAvailable, ANDROID_APP_URL, useLandingActions } from '../../lib/landingActions';
 import './Footer.css';
 
-interface FooterProps {
-  onOpenVendorOnboarding?: () => void;
-  onOpenLogisticsOnboarding?: () => void;
-}
-
-export const Footer: React.FC<FooterProps> = ({
-  onOpenVendorOnboarding,
-  onOpenLogisticsOnboarding,
-}) => {
-  const navigate = useNavigate();
-
-  const handleVendorClick = () => {
-    if (onOpenVendorOnboarding) {
-      onOpenVendorOnboarding();
-    } else {
-      navigate('/signup?role=vendor');
-    }
-  };
-
-  const handleLogisticsClick = () => {
-    if (onOpenLogisticsOnboarding) {
-      onOpenLogisticsOnboarding();
-    } else {
-      navigate('/signup?role=logistics_provider');
-    }
-  };
+export const Footer: React.FC = () => {
+  const { openWebApp, signUpAsVendor, signUpAsProvider, goToSection } = useLandingActions();
 
   return (
     <footer className="of-footer">
@@ -41,12 +17,9 @@ export const Footer: React.FC<FooterProps> = ({
               <OrderFlowLogo size={28} variant="dark" showText={true} />
             </Link>
             <p className="of-footer-tagline">
-              The logistics marketplace connecting commercial vendors directly with verified delivery providers. Efficient, transparent, and built for scale.
+              A logistics marketplace connecting merchants with logistics providers and riders — from delivery
+              request to proof of delivery.
             </p>
-            <div className="of-footer-status">
-              <span className="of-status-dot"></span>
-              <span className="of-status-text">Platform Operational • Live Routing</span>
-            </div>
           </div>
 
           {/* Navigation Link Groups */}
@@ -54,29 +27,33 @@ export const Footer: React.FC<FooterProps> = ({
             <div className="of-footer-col">
               <h4 className="of-footer-heading">Product</h4>
               <ul className="of-footer-list">
-                <li><Link to="/track">Track Package</Link></li>
-                <li><a href="#how-it-works">How It Works</a></li>
-                <li><button onClick={handleVendorClick} className="of-footer-btn-link">Create Delivery</button></li>
-                <li><a href="#value-proposition">Vendor Benefits</a></li>
-                <li><a href="#trust-quality">Marketplace Safety</a></li>
+                <li><Link to="/track">Track a delivery</Link></li>
+                <li><button onClick={() => goToSection('how-it-works')} className="of-footer-btn-link">How it works</button></li>
+                <li><button onClick={() => goToSection('features')} className="of-footer-btn-link">Features</button></li>
+                <li><button onClick={openWebApp} className="of-footer-btn-link">Use on Web</button></li>
+                <li>
+                  {isAndroidAppAvailable ? (
+                    <a href={ANDROID_APP_URL} rel="noopener noreferrer">Download Android App</a>
+                  ) : (
+                    <span className="of-footer-muted">Android app — coming soon</span>
+                  )}
+                </li>
               </ul>
             </div>
 
             <div className="of-footer-col">
-              <h4 className="of-footer-heading">For Businesses</h4>
+              <h4 className="of-footer-heading">Get started</h4>
               <ul className="of-footer-list">
-                <li><button onClick={handleVendorClick} className="of-footer-btn-link">Vendor Registration</button></li>
-                <li><button onClick={handleLogisticsClick} className="of-footer-btn-link">Logistics Companies</button></li>
-                <li><a href="#logistics-providers">Fleet Management</a></li>
-                <li><a href="#trust-quality">SLA Guarantee</a></li>
+                <li><button onClick={signUpAsVendor} className="of-footer-btn-link">Merchant sign up</button></li>
+                <li><button onClick={signUpAsProvider} className="of-footer-btn-link">Provider sign up</button></li>
+                <li><Link to="/login">Sign in</Link></li>
               </ul>
             </div>
 
             <div className="of-footer-col">
-              <h4 className="of-footer-heading">Company & Legal</h4>
+              <h4 className="of-footer-heading">Legal</h4>
               <ul className="of-footer-list">
-                <li><a href="#trust-quality">About OrderFlow</a></li>
-                <li><Link to="/privacy">Security & Privacy</Link></li>
+                <li><Link to="/privacy">Privacy Policy</Link></li>
                 <li><Link to="/terms">Terms of Service</Link></li>
               </ul>
             </div>
@@ -88,10 +65,6 @@ export const Footer: React.FC<FooterProps> = ({
           <p className="of-footer-copyright">
             © {new Date().getFullYear()} OrderFlow Logistics Technologies. All rights reserved.
           </p>
-          <div className="of-footer-security">
-            <ShieldCheck size={16} className="text-muted" />
-            <span>Encrypted Platform Core</span>
-          </div>
         </div>
       </div>
     </footer>

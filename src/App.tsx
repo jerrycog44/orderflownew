@@ -12,11 +12,11 @@ import { AppLayout } from './components/layout/AppLayout';
 
 // Landing page sections (eagerly loaded for instant first paint)
 import { HeroSection } from './components/sections/HeroSection';
-import { WhatsAppSection } from './components/sections/WhatsAppSection';
 import { HowItWorksSection } from './components/sections/HowItWorksSection';
-import { LogisticsProviderSection } from './components/sections/LogisticsProviderSection';
+import { FeaturesSection } from './components/sections/FeaturesSection';
 import { TrustSection } from './components/sections/TrustSection';
-import { FinalCtaSection } from './components/sections/FinalCtaSection';
+import { LogisticsProviderSection } from './components/sections/LogisticsProviderSection';
+import { GetAppSection } from './components/sections/GetAppSection';
 
 // Lazy-loaded Auth pages
 const LoginPage = lazy(() => import('./pages/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -59,11 +59,11 @@ export function App() {
                 element={
                   <>
                     <HeroSection />
-                    <WhatsAppSection />
                     <HowItWorksSection />
-                    <LogisticsProviderSection />
+                    <FeaturesSection />
                     <TrustSection />
-                    <FinalCtaSection />
+                    <LogisticsProviderSection />
+                    <GetAppSection />
                   </>
                 }
               />

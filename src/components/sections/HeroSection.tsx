@@ -1,90 +1,61 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import { Button } from '../ui/Button';
+import { ShieldCheck, Zap, Radio, KeyRound, Banknote } from 'lucide-react';
+import { AppCtas } from './AppCtas';
 import { OrderPreviewVisual } from './OrderPreviewVisual';
-import './HeroSection.css';
+import { useLandingActions } from '../../lib/landingActions';
+import './landing.css';
 
-interface HeroSectionProps {
-  onOpenVendorOnboarding?: () => void;
-  onOpenLogisticsOnboarding?: () => void;
-}
+const HIGHLIGHTS = [
+  { icon: Zap, label: 'Smart Dispatch' },
+  { icon: Radio, label: 'Live status updates' },
+  { icon: KeyRound, label: 'PIN-verified handover' },
+  { icon: Banknote, label: 'Cash on delivery' },
+];
 
-export const HeroSection: React.FC<HeroSectionProps> = ({
-  onOpenVendorOnboarding,
-}) => {
-  const navigate = useNavigate();
-
-  const handleVendorClick = () => {
-    if (onOpenVendorOnboarding) {
-      onOpenVendorOnboarding();
-    } else {
-      navigate('/signup?role=vendor');
-    }
-  };
-
-  const handleJoinClick = () => {
-    navigate('/signup');
-  };
+export const HeroSection: React.FC = () => {
+  const { goToSection } = useLandingActions();
 
   return (
-    <section className="of-hero-section">
-      <div className="container">
-        <div className="of-hero-grid">
-          {/* Left Column: Messaging & Actions */}
-          <div className="of-hero-content">
-            <div className="of-hero-pill">
-              <ShieldCheck size={14} className="of-pill-icon" />
-              <span>Logistics Marketplace Platform</span>
-            </div>
+    <section className="lp-hero" aria-labelledby="hero-title">
+      <div className="lp-hero-glow" aria-hidden="true" />
+      <div className="lp-hero-grid-bg" aria-hidden="true" />
 
-            <h1 className="of-hero-headline">
-              Deliver smarter with <span className="of-highlight-text">OrderFlow.</span>
-            </h1>
+      <div className="container lp-hero-inner">
+        <div className="lp-hero-copy">
+          <span className="lp-eyebrow">
+            <ShieldCheck size={14} aria-hidden="true" />
+            Logistics marketplace for merchants &amp; riders
+          </span>
 
-            <p className="of-hero-subhead">
-              Connect with suitable logistics providers, manage deliveries, and stay updated from one simple platform — including WhatsApp.
-            </p>
+          <h1 id="hero-title" className="lp-hero-title">
+            Deliver smarter,
+            <br />
+            from pickup to <span className="lp-gradient-text">proof of delivery.</span>
+          </h1>
 
-            <div className="of-hero-cta-group">
-              <Button
-                variant="primary"
-                size="lg"
-                onClick={handleVendorClick}
-                rightIcon={<ArrowRight size={18} />}
-              >
-                Create a delivery
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={handleJoinClick}
-              >
-                Join OrderFlow
-              </Button>
-            </div>
+          <p className="lp-hero-sub">
+            OrderFlow connects merchants with logistics providers and riders. Create a delivery in minutes, get
+            matched with an available rider, and follow every status change until the customer confirms the handover.
+          </p>
 
-            {/* Micro Trust Bullet Points */}
-            <div className="of-hero-trust-bullets">
-              <div className="of-trust-item">
-                <CheckCircle2 size={16} className="of-trust-check" />
-                <span>Suitable Recommendations</span>
-              </div>
-              <div className="of-trust-item">
-                <CheckCircle2 size={16} className="of-trust-check" />
-                <span>Available Fleets</span>
-              </div>
-              <div className="of-trust-item">
-                <CheckCircle2 size={16} className="of-trust-check" />
-                <span>WhatsApp Sync</span>
-              </div>
-            </div>
-          </div>
+          <AppCtas tone="onDark" />
 
-          {/* Right Column: Product Visual */}
-          <div className="of-hero-visual-col">
-            <OrderPreviewVisual onGetStarted={handleVendorClick} />
-          </div>
+          <button type="button" className="lp-text-link" onClick={() => goToSection('how-it-works')}>
+            See how it works
+          </button>
+
+          <ul className="lp-highlights" aria-label="Platform highlights">
+            {HIGHLIGHTS.map(({ icon: Icon, label }) => (
+              <li key={label}>
+                <Icon size={16} aria-hidden="true" />
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="lp-hero-visual">
+          <OrderPreviewVisual />
         </div>
       </div>
     </section>

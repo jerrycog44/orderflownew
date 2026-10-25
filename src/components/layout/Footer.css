@@ -124,3 +124,8 @@
   font-size: var(--font-size-xs);
   color: #94A3B8;
 }
+
+.of-footer-muted {
+  color: #64748B;
+  font-size: var(--font-size-sm);
+}

@@ -81,7 +81,7 @@ export const PrivacyPage: React.FC = () => {
           <ul>
             <li><strong>Dispatch Routing & Matching:</strong> Evaluating parcel criteria against courier service areas and vehicle capacities.</li>
             <li><strong>Delivery Fulfillment:</strong> Enabling assigned couriers to navigate to pickup locations and contact recipients upon arrival.</li>
-            <li><strong>Real-Time Tracking:</strong> Providing live status notifications via WhatsApp, SMS, and web tracking pages.</li>
+            <li><strong>Real-Time Tracking:</strong> Providing live delivery status updates in the OrderFlow dashboards and on web tracking pages.</li>
             <li><strong>Security & Anti-Fraud:</strong> Enforcing audit trails, verifying proof of delivery (POD), and serializing dispatch offers.</li>
           </ul>
 

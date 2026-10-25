@@ -1,78 +1,51 @@
 import React from 'react';
-import { PackagePlus, SlidersHorizontal, Radar, CheckCircle2 } from 'lucide-react';
-import { Card } from '../ui/Card';
-import './HowItWorksSection.css';
+import { PackagePlus, UserCheck, Route } from 'lucide-react';
+import './landing.css';
 
-export const HowItWorksSection: React.FC = () => {
-  const steps = [
-    {
-      number: '01',
-      title: "Tell us what you're sending",
-      description: 'Package/product information and pickup and customer delivery locations.',
-      icon: <PackagePlus size={22} className="of-step-icon" />,
-    },
-    {
-      number: '02',
-      title: 'Choose a suitable provider',
-      description: 'OrderFlow recommends logistics providers based primarily on suitability and current availability.',
-      icon: <SlidersHorizontal size={22} className="of-step-icon" />,
-    },
-    {
-      number: '03',
-      title: 'Track your delivery',
-      description: 'Follow the delivery through its lifecycle from pickup to completion.',
-      icon: <Radar size={22} className="of-step-icon" />,
-    },
-  ];
+const STEPS = [
+  {
+    number: '01',
+    icon: PackagePlus,
+    title: 'Create the delivery',
+    description: 'Add the package, pickup and drop-off locations, and the recipient. Your details are kept as you move between steps.',
+  },
+  {
+    number: '02',
+    icon: UserCheck,
+    title: 'Get matched with a rider',
+    description: 'Let Smart Dispatch offer the job to the best-matched available provider, or choose a provider yourself.',
+  },
+  {
+    number: '03',
+    icon: Route,
+    title: 'Track to handover',
+    description: 'Follow each status change from pickup to delivery. The recipient confirms the handover with a 4-digit PIN.',
+  },
+];
 
-  return (
-    <section id="how-it-works" className="section section-subtle">
-      <div className="container">
-        <div className="section-header">
-          <span className="section-badge">Simple Workflow</span>
-          <h2 className="section-title">How OrderFlow Works</h2>
-          <p className="section-description">
-            Three simple steps to arrange and manage your deliveries seamlessly.
-          </p>
-        </div>
+export const HowItWorksSection: React.FC = () => (
+  <section id="how-it-works" className="lp-section" aria-labelledby="how-title">
+    <div className="container">
+      <header className="lp-section-head">
+        <span className="lp-kicker">How it works</span>
+        <h2 id="how-title" className="lp-h2">From request to doorstep in three steps</h2>
+        <p className="lp-lead">One workflow for merchants, providers and the people receiving the package.</p>
+      </header>
 
-        {/* 3-Step Grid */}
-        <div className="of-timeline-grid-3">
-          {steps.map((step) => (
-            <Card key={step.number} className="of-step-card" padding="lg">
-              <div className="of-step-card-header">
-                <span className="of-step-num">{step.number}</span>
-                <div className="of-step-icon-wrapper">{step.icon}</div>
-              </div>
-              <h3 className="of-step-title">{step.title}</h3>
-              <p className="of-step-desc">{step.description}</p>
-            </Card>
-          ))}
-        </div>
-
-        {/* Concise Provider Recommendation Highlight */}
-        <div className="of-rec-card">
-          <div className="of-rec-header">
-            <h3 className="of-rec-title">Find the right logistics provider.</h3>
-            <p className="of-rec-sub">OrderFlow helps match your delivery with suitable providers on the platform.</p>
-          </div>
-
-          <div className="of-rec-bullets">
-            <div className="of-rec-bullet">
-              <CheckCircle2 size={16} className="of-rec-check" />
-              <span><strong>Suitable for your package</strong> (dimensions, weight, special handling)</span>
+      <ol className="lp-steps">
+        {STEPS.map(({ number, icon: Icon, title, description }) => (
+          <li key={number} className="lp-step">
+            <div className="lp-step-top">
+              <span className="lp-step-icon">
+                <Icon size={22} aria-hidden="true" />
+              </span>
+              <span className="lp-step-num" aria-hidden="true">{number}</span>
             </div>
-            <div className="of-rec-bullet">
-              <CheckCircle2 size={16} className="of-rec-check" />
-              <span><strong>Available for the delivery</strong> (coverage area & active fleet)</span>
-            </div>
-            <div className="of-rec-bullet">
-              <CheckCircle2 size={16} className="of-rec-check" />
-              <span><strong>Reviews & ratings</strong> when enough delivery history exists</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-};
+            <h3 className="lp-h3">{title}</h3>
+            <p>{description}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+);

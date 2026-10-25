@@ -4,19 +4,13 @@ import { Menu, X, ArrowRight, User } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { OrderFlowLogo } from '../ui/OrderFlowLogo';
 import { useAuth } from '../../auth/AuthContext';
+import { useLandingActions } from '../../lib/landingActions';
 import './Navbar.css';
 
-interface NavbarProps {
-  onOpenVendorOnboarding?: () => void;
-  onOpenLogisticsOnboarding?: () => void;
-}
-
-export const Navbar: React.FC<NavbarProps> = ({
-  onOpenVendorOnboarding,
-  onOpenLogisticsOnboarding,
-}) => {
+export const Navbar: React.FC = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { isAuthenticated, signOut } = useAuth();
+  const { dashboardPath, openWebApp, goToSection } = useLandingActions();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -34,32 +28,17 @@ export const Navbar: React.FC<NavbarProps> = ({
     } else {
       document.body.classList.remove('modal-open');
     }
+    return () => document.body.classList.remove('modal-open');
   }, [mobileMenuOpen]);
 
   const scrollToSection = (id: string) => {
     setMobileMenuOpen(false);
-    const element = document.getElementById(id);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      navigate('/#' + id);
-    }
+    goToSection(id);
   };
 
-  const handleVendorClick = () => {
-    if (onOpenVendorOnboarding) {
-      onOpenVendorOnboarding();
-    } else {
-      navigate('/signup?role=vendor');
-    }
-  };
-
-  const handleLogisticsClick = () => {
-    if (onOpenLogisticsOnboarding) {
-      onOpenLogisticsOnboarding();
-    } else {
-      navigate('/signup?role=logistics_provider');
-    }
+  const handleSignOut = async () => {
+    setMobileMenuOpen(false);
+    await signOut();
   };
 
   return (
@@ -75,8 +54,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button onClick={() => scrollToSection('how-it-works')} className="of-nav-link">
             How It Works
           </button>
-          <button onClick={() => scrollToSection('whatsapp-integration')} className="of-nav-link">
-            WhatsApp & Web
+          <button onClick={() => scrollToSection('features')} className="of-nav-link">
+            Features
           </button>
           <button onClick={() => scrollToSection('logistics-providers')} className="of-nav-link">
             For Providers
@@ -93,16 +72,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() =>
-                  navigate(
-                    user?.role === 'vendor' ? '/dashboard/vendor' : '/dashboard/provider'
-                  )
-                }
+                onClick={() => navigate(dashboardPath ?? '/login')}
                 leftIcon={<User size={15} />}
               >
                 Dashboard
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => signOut()}>
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
                 Sign out
               </Button>
             </>
@@ -111,13 +86,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Button variant="ghost" size="sm" onClick={() => navigate('/login')}>
                 Sign in
               </Button>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleVendorClick}
-                rightIcon={<ArrowRight size={15} />}
-              >
-                Get started
+              <Button variant="primary" size="sm" onClick={openWebApp} rightIcon={<ArrowRight size={15} />}>
+                Use on Web
               </Button>
             </>
           )}
@@ -135,25 +105,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Navigation Drawer */}
         {mobileMenuOpen && (
-          <div className="of-mobile-drawer" role="dialog" aria-modal="true">
+          <div className="of-mobile-drawer" role="dialog" aria-modal="true" aria-label="Navigation menu">
             <div className="of-mobile-drawer-content">
               <nav className="of-mobile-nav">
-                <button
-                  onClick={() => scrollToSection('how-it-works')}
-                  className="of-mobile-nav-link"
-                >
+                <button onClick={() => scrollToSection('how-it-works')} className="of-mobile-nav-link">
                   How It Works
                 </button>
-                <button
-                  onClick={() => scrollToSection('whatsapp-integration')}
-                  className="of-mobile-nav-link"
-                >
-                  WhatsApp & Web
+                <button onClick={() => scrollToSection('features')} className="of-mobile-nav-link">
+                  Features
                 </button>
-                <button
-                  onClick={() => scrollToSection('logistics-providers')}
-                  className="of-mobile-nav-link"
-                >
+                <button onClick={() => scrollToSection('logistics-providers')} className="of-mobile-nav-link">
                   For Providers
                 </button>
                 <button
@@ -169,19 +130,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <div className="of-mobile-drawer-actions">
                 {isAuthenticated ? (
-                  <Button
-                    variant="primary"
-                    size="md"
-                    className="w-full"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      navigate(
-                        user?.role === 'vendor' ? '/dashboard/vendor' : '/dashboard/provider'
-                      );
-                    }}
-                  >
-                    Go to Dashboard
-                  </Button>
+                  <>
+                    <Button
+                      variant="primary"
+                      size="md"
+                      className="w-full"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        navigate(dashboardPath ?? '/login');
+                      }}
+                    >
+                      Go to Dashboard
+                    </Button>
+                    <Button variant="ghost" size="md" className="w-full" onClick={handleSignOut}>
+                      Sign out
+                    </Button>
+                  </>
                 ) : (
                   <>
                     <Button
@@ -190,10 +154,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full"
                       onClick={() => {
                         setMobileMenuOpen(false);
-                        handleLogisticsClick();
+                        navigate('/login');
                       }}
                     >
-                      Become a provider
+                      Sign in
                     </Button>
                     <Button
                       variant="primary"
@@ -201,11 +165,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                       className="w-full"
                       onClick={() => {
                         setMobileMenuOpen(false);
-                        handleVendorClick();
+                        openWebApp();
                       }}
                       rightIcon={<ArrowRight size={16} />}
                     >
-                      Get started
+                      Use on Web
                     </Button>
                   </>
                 )}
