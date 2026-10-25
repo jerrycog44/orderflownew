@@ -10,9 +10,21 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cap:sync": "npm run build && npx cap sync android",
+    "cap:copy": "npm run build && npx cap copy android",
+    "cap:open": "npx cap open android",
+    "android:build": "npm run cap:sync && cd android && .\\gradlew.bat assembleRelease",
+    "android:build:debug": "npm run cap:sync && cd android && .\\gradlew.bat assembleDebug"
   },
   "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/browser": "^8.0.5",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
     "@supabase/supabase-js": "^2.117.0",
     "lucide-react": "^1.45.0",
     "react": "^19.2.8",
@@ -20,6 +32,7 @@
     "react-router-dom": "^7.18.3"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.3",
     "@electric-sql/pglite": "^0.5.10",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",

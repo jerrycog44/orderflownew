@@ -5,8 +5,10 @@ import App from './App.tsx'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 
 import { initPlatform } from './lib/platform'
+import { initNativeBridge } from './lib/nativeBridge'
 
 initPlatform()
+initNativeBridge()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
