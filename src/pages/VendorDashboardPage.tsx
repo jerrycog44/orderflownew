@@ -15,6 +15,8 @@ import {
   Repeat,
   LogOut,
   Building,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
@@ -26,6 +28,7 @@ import {
   StatusFilterPills,
   BottomSheet,
 } from '../components/mobile';
+import { getStatusBadgeConfig } from '../components/mobile/deliveryStatusHelpers';
 import type { FilterPillItem } from '../components/mobile';
 import type { VendorProfile, DeliveryRecord } from '../types';
 import './VendorDashboardPage.css';
@@ -44,6 +47,7 @@ export const VendorDashboardPage: React.FC = () => {
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
 
   // Profile Drawer state
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -361,7 +365,7 @@ export const VendorDashboardPage: React.FC = () => {
           onSelect={setStatusFilter}
         />
 
-        {/* 7. Section Header */}
+        {/* 7. Section Header & View Switcher */}
         <div className="of-merchant-section-header">
           <h3 className="of-merchant-section-title">
             <span>Dispatches Directory</span>
@@ -369,6 +373,29 @@ export const VendorDashboardPage: React.FC = () => {
               {filteredDeliveries.length}
             </span>
           </h3>
+
+          <div className="of-merchant-view-switcher" role="group" aria-label="View Mode">
+            <button
+              type="button"
+              className={`of-merchant-view-btn ${viewMode === 'cards' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('cards')}
+              aria-label="Cards view"
+              title="Cards view"
+            >
+              <LayoutGrid size={16} />
+              <span className="of-desktop-only-text">Cards</span>
+            </button>
+            <button
+              type="button"
+              className={`of-merchant-view-btn ${viewMode === 'table' ? 'is-active' : ''}`}
+              onClick={() => setViewMode('table')}
+              aria-label="Table view"
+              title="Table view"
+            >
+              <List size={16} />
+              <span className="of-desktop-only-text">Table</span>
+            </button>
+          </div>
         </div>
 
         {/* 8. Deliveries List (5 standard states) */}
@@ -428,9 +455,87 @@ export const VendorDashboardPage: React.FC = () => {
                 </button>
               )}
             </div>
+          ) : viewMode === 'table' ? (
+            // State: Desktop Data Table View
+            <div className="of-merchant-table-wrapper" data-testid="merchant-table-view">
+              <table className="of-merchant-table">
+                <thead>
+                  <tr>
+                    <th>Tracking / ID</th>
+                    <th>Product & Category</th>
+                    <th>Route</th>
+                    <th>Recipient</th>
+                    <th>Status</th>
+                    <th>Fare</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDeliveries.map((delivery) => {
+                    const trackingCode = delivery.trackingCode || (delivery.id ? delivery.id.slice(0, 8).toUpperCase() : 'OF-NEW');
+                    const statusConfig = getStatusBadgeConfig(delivery.status);
+                    return (
+                      <tr
+                        key={delivery.id}
+                        data-testid={`delivery-job-card-${trackingCode}`}
+                        onClick={() => navigate(`/vendor/deliveries/${delivery.id}`)}
+                        className="of-merchant-table-row"
+                        tabIndex={0}
+                      >
+                        <td className="of-table-cell-tracking">
+                          <span className="of-table-code">{trackingCode}</span>
+                          <span className="of-table-date">{new Date(delivery.createdAt).toLocaleDateString()}</span>
+                        </td>
+                        <td>
+                          <div className="of-table-product-name">{delivery.productName}</div>
+                          <div className="of-table-product-sub">
+                            {delivery.package?.itemCategory || 'Parcel'} • {delivery.package?.weightKg || 0}kg
+                          </div>
+                        </td>
+                        <td>
+                          <div className="of-table-route-node">
+                            <span className="of-table-dot pickup" />
+                            <span>{delivery.pickup?.city || 'Origin'}</span>
+                          </div>
+                          <div className="of-table-route-node">
+                            <span className="of-table-dot dest" />
+                            <span>{delivery.destination?.city || 'Destination'}</span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="of-table-recipient-name">{delivery.recipient?.name}</div>
+                          <div className="of-table-recipient-phone">{delivery.recipient?.phone}</div>
+                        </td>
+                        <td>
+                          <span className={`of-m-status-pill ${statusConfig.className}`}>
+                            <span className="of-m-status-dot" aria-hidden="true" />
+                            {statusConfig.label}
+                          </span>
+                        </td>
+                        <td className="of-table-price">
+                          ₦{(delivery.estimatedPrice || 0).toLocaleString()}
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="of-table-action-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/vendor/deliveries/${delivery.id}`);
+                            }}
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
-            // State: Active List of Cards
-            <div data-testid="merchant-active-list">
+            // State: Cards Grid View
+            <div data-testid="merchant-active-list" className="of-merchant-cards-grid">
               {filteredDeliveries.map((delivery) => (
                 <DeliveryJobCard
                   key={delivery.id}

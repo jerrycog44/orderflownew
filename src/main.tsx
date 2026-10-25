@@ -4,6 +4,10 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
 
+import { initPlatform } from './lib/platform'
+
+initPlatform()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

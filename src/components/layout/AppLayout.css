@@ -198,8 +198,26 @@
   margin: var(--space-1) 0;
 }
 
+.of-app-header-create-btn {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+}
+
 #app-main-content {
   flex: 1;
+}
+
+/* Platform distinction: In native mode, force mobile bottom nav and safe area */
+.platform-native .of-app-header {
+  display: none !important;
+}
+
+.platform-native #app-main-content {
+  padding-bottom: calc(var(--m-bottom-nav-height) + var(--m-safe-bottom));
 }
 
 @media (min-width: 769px) {
@@ -210,6 +228,10 @@
 
 @media (max-width: 768px) {
   .of-app-header {
+    display: none !important;
+  }
+
+  .of-app-header-create-btn {
     display: none !important;
   }
 
@@ -226,3 +248,4 @@
     display: none;
   }
 }
+

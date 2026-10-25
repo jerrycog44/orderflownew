@@ -391,8 +391,10 @@ export const ProviderDashboardPage: React.FC = () => {
       />
 
       <div className="of-rider-container">
-        {/* 2. Availability Segmented Switcher (48px Touch Minimum) */}
-        <section aria-label="Rider Availability">
+        {/* Left Operational Sidebar (Desktop multi-column rail) */}
+        <aside className="of-rider-sidebar">
+          {/* 2. Availability Segmented Switcher (48px Touch Minimum) */}
+          <section aria-label="Rider Availability">
           <div className="of-rider-availability-wrapper" data-testid="rider-availability-toggle">
             <button
               type="button"
@@ -499,7 +501,33 @@ export const ProviderDashboardPage: React.FC = () => {
           </section>
         )}
 
-        {/* 5. Error State Banner */}
+        {/* 4b. Desktop Quick Fleet Card */}
+        <div className="of-rider-fleet-card of-desktop-only">
+          <div className="of-fleet-header">
+            <Truck size={18} />
+            <h4>Fleet Cockpit</h4>
+          </div>
+          <p className="of-fleet-name">{providerName}</p>
+          <p className="of-fleet-area">{profile?.coverageArea || 'Standard Operating Fleet'}</p>
+          <div className="of-fleet-stats-row">
+            <div className="of-fleet-stat-pill">
+              <span>Active</span>
+              <strong>{activeAssignedDeliveries.length}</strong>
+            </div>
+            <div className="of-fleet-stat-pill">
+              <span>Delivered</span>
+              <strong>{completedDeliveries.length}</strong>
+            </div>
+            <div className="of-fleet-stat-pill">
+              <span>Earnings</span>
+              <strong>₦{totalCompletedEarnings.toLocaleString()}</strong>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Right Main Dispatches Column */}
+      <div className="of-rider-main">
         {refreshError && (
           <div className="of-merchant-error-banner" role="alert" data-testid="rider-error-banner">
             <AlertCircle size={22} style={{ flexShrink: 0, marginTop: '2px' }} />
@@ -839,6 +867,7 @@ export const ProviderDashboardPage: React.FC = () => {
             )
           )}
         </section>
+        </div>
       </div>
 
       {/* 9. BottomSheet: Job Details & Acceptance */}

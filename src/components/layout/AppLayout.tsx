@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Truck, LogOut, LayoutDashboard, User as UserIcon, Settings, ChevronDown, Repeat, Search } from 'lucide-react';
+import { Truck, LogOut, LayoutDashboard, User as UserIcon, Settings, ChevronDown, Repeat, Search, Plus } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { logisticsService } from '../../services/logisticsService';
+import { usePlatform } from '../../lib/platform';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
@@ -130,6 +131,8 @@ export const AppLayout: React.FC = () => {
     }
   };
 
+  const { isNative, isMobile } = usePlatform();
+
   return (
     <div className="of-app-layout">
       {/* Authenticated Application Header */}
@@ -169,6 +172,19 @@ export const AppLayout: React.FC = () => {
           </nav>
 
           <div className="of-app-header-right">
+            {/* Desktop Quick Action */}
+            {isVendor && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/vendor/deliveries/create')}
+                className="of-app-header-create-btn"
+              >
+                <Plus size={14} style={{ marginRight: '4px' }} />
+                <span>Create Delivery</span>
+              </Button>
+            )}
+
             {/* Interactive User Dropdown Menu */}
             <div className="of-app-user-menu-wrapper" ref={menuRef}>
               <button
@@ -247,8 +263,8 @@ export const AppLayout: React.FC = () => {
         <Outlet />
       </main>
 
-      {/* Mobile-only Bottom Navigation Bar */}
-      <MobileBottomNav />
+      {/* Mobile-only Bottom Navigation Bar: Only in native mode or on mobile viewport */}
+      {(isNative || isMobile) && <MobileBottomNav />}
 
       {/* Workspace Settings / Profile Edit Modal */}
       <Modal

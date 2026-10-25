@@ -22,11 +22,49 @@
   gap: var(--m-space-4);
 }
 
+.of-rider-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.of-rider-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+.of-desktop-only {
+  display: none;
+}
+
 @media (min-width: 768px) {
   .of-rider-container {
-    max-width: 680px;
+    max-width: 820px;
+    padding: 0 var(--space-6);
   }
 }
+
+@media (min-width: 1024px) {
+  .of-desktop-only {
+    display: block;
+  }
+
+  .of-rider-container {
+    max-width: 1240px;
+    padding: 0 var(--space-8);
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: var(--space-6);
+    align-items: flex-start;
+  }
+
+  .of-rider-sidebar {
+    position: sticky;
+    top: 80px;
+  }
+}
+
 
 /* Availability Segmented Switcher (Strict 48px Touch Minimum) */
 .of-rider-availability-wrapper {
@@ -362,3 +400,74 @@
   height: 200px;
   object-fit: cover;
 }
+
+/* ============================================================================
+   DESKTOP FLEET COCKPIT CARD STYLES
+   ============================================================================ */
+.of-rider-fleet-card {
+  background-color: var(--m-color-bg-surface);
+  border: 1px solid var(--m-color-border-default);
+  border-radius: var(--m-radius-xl);
+  padding: var(--space-4) var(--space-5);
+  box-shadow: var(--m-shadow-card);
+}
+
+.of-fleet-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--m-color-brand-accent);
+  margin-bottom: var(--space-2);
+}
+
+.of-fleet-header h4 {
+  margin: 0;
+  font-size: var(--m-text-xs);
+  font-weight: 700;
+  color: var(--m-color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.of-fleet-name {
+  font-size: var(--m-text-base);
+  font-weight: 700;
+  color: var(--m-color-text-primary);
+  margin: 0 0 2px 0;
+}
+
+.of-fleet-area {
+  font-size: var(--m-text-xs);
+  color: var(--m-color-text-muted);
+  margin: 0 0 var(--space-4) 0;
+}
+
+.of-fleet-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  background-color: var(--m-color-bg-subtle);
+  border-radius: var(--m-radius-md);
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.of-fleet-stat-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.of-fleet-stat-pill span {
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--m-color-text-muted);
+  text-transform: uppercase;
+}
+
+.of-fleet-stat-pill strong {
+  font-size: var(--m-text-xs);
+  font-weight: 700;
+  color: var(--m-color-text-primary);
+}
+

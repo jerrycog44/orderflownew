@@ -87,13 +87,21 @@
   --m-shadow-sheet: 0 -4px 20px rgba(15, 23, 42, 0.12);
   --m-shadow-fab: 0 4px 14px rgba(37, 99, 235, 0.35);
 
-  /* Safe Area Variables with Fallbacks */
-  --m-safe-top: env(safe-area-inset-top, 0px);
-  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
-  --m-safe-left: env(safe-area-inset-left, 0px);
-  --m-safe-right: env(safe-area-inset-right, 0px);
+  /* Safe Area Variables: 0px on standard web, env() on native Android/Capacitor */
+  --m-safe-top: 0px;
+  --m-safe-bottom: 0px;
+  --m-safe-left: 0px;
+  --m-safe-right: 0px;
 
   /* Standard Motion */
   --m-transition-fast: 120ms ease-out;
   --m-transition-normal: 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+.platform-native {
+  --m-safe-top: env(safe-area-inset-top, 0px);
+  --m-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --m-safe-left: env(safe-area-inset-left, 0px);
+  --m-safe-right: env(safe-area-inset-right, 0px);
+}
+

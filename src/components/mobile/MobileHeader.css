@@ -124,3 +124,27 @@
 .of-m-header-action-btn:active {
   background-color: var(--m-color-bg-subtle);
 }
+
+/* On desktop web screens, MobileHeader seamlessly adapts to an in-page section header */
+@media (min-width: 769px) {
+  .of-m-header {
+    position: static;
+    background: transparent;
+    border-bottom: none;
+    box-shadow: none;
+    padding-top: 0;
+    margin-bottom: var(--space-2);
+  }
+
+  .of-m-header-inner {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-8);
+    height: auto;
+  }
+
+  .of-m-header-title {
+    font-size: var(--font-size-2xl);
+  }
+}
+
