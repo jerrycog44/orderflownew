@@ -18,6 +18,7 @@ import {
 import type { PackageDetails, LocationPoint, LogisticsProvider, DeliveryRecord, PaymentMethod } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { deliveryService } from '../../services/deliveryService';
+import { logisticsService } from '../../services/logisticsService';
 import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../../lib/whatsapp';
 import { Button } from '../ui/Button';
 
@@ -52,6 +53,24 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Synchronous ref lock to prevent duplicate rapid submissions
+  const isSubmittingRef = React.useRef(false);
+
+  // Genuine dynamic price and transit calculation from routing engine
+  const dynamicPricing = React.useMemo(() => {
+    const evaluated = logisticsService.recommendLogisticsProviders({
+      package: packageData,
+      pickup,
+      destination,
+    });
+    const eligible = evaluated.find((p) => p.availability === 'available') || evaluated[0];
+    return {
+      price: selectedProvider ? selectedProvider.estimatedPrice : (eligible?.estimatedPrice || 3500),
+      transitTime: selectedProvider ? selectedProvider.estimatedDeliveryTime : (eligible?.estimatedDeliveryTime || 'Same Day Dispatch'),
+      candidateProvider: eligible,
+    };
+  }, [packageData, pickup, destination, selectedProvider]);
+
   const handleCopyTrackingLink = async () => {
     if (!createdDelivery) return;
     const url = getPublicTrackingUrl(createdDelivery.trackingCode || createdDelivery.id);
@@ -65,6 +84,9 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   };
 
   const handleConfirmDelivery = async () => {
+    // Guard against duplicate concurrent or repeated submissions
+    if (isSubmittingRef.current || isSubmitting || createdDelivery) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -83,8 +105,8 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         recipient,
         deliveryNote,
         status: isAuto ? 'opportunity_sent' : 'awaiting_pickup',
-        estimatedPrice: selectedProvider ? selectedProvider.estimatedPrice : 3500,
-        estimatedDeliveryTime: selectedProvider ? selectedProvider.estimatedDeliveryTime : 'Same Day Dispatch',
+        estimatedPrice: dynamicPricing.price,
+        estimatedDeliveryTime: dynamicPricing.transitTime,
         paymentMethod,
         paymentStatus: paymentMethod === 'prepaid_online' ? 'collected' : 'pending',
         requirePhotoProof,
@@ -93,6 +115,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
       setCreatedDelivery(newDelivery);
     } catch (err) {
       console.error('Failed to create delivery:', err);
+      isSubmittingRef.current = false;
       const message = err instanceof Error ? err.message : 'Failed to create delivery request. Please try again.';
       setSubmitError(message);
     } finally {
@@ -380,7 +403,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               Est. Price
             </span>
             <p style={{ fontSize: 'var(--font-size-lg)', fontWeight: 700, color: 'var(--color-brand-accent)', margin: 0 }}>
-              ₦{(selectedProvider ? selectedProvider.estimatedPrice : 3500).toLocaleString()}
+              ₦{dynamicPricing.price.toLocaleString()}
             </p>
           </div>
         </div>

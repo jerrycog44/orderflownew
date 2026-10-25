@@ -1,169 +1,169 @@
+/* ============================================================================
+   ORDERFLOW CUSTOMER TRACKING HUB MOBILE STYLES
+   Adhering to OrderFlow Mobile Design Bible & Phase 3 Token Architecture
+   ============================================================================ */
+
 .tracking-page-container {
-  max-width: 840px;
-  margin: var(--space-8) auto;
-  padding: 0 var(--space-4);
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--m-color-bg-app);
+  display: flex;
+  flex-direction: column;
+}
+
+.tracking-content-wrapper {
+  max-width: 500px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--m-space-3) var(--m-space-4);
+  padding-bottom: calc(var(--m-bottom-nav-height) + var(--m-safe-bottom) + var(--m-space-8));
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
+}
+
+@media (min-width: 768px) {
+  .tracking-content-wrapper {
+    max-width: 680px;
+    padding: var(--m-space-6) var(--m-space-6);
+  }
 }
 
 .tracking-header-card {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  margin-bottom: var(--space-6);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  background-color: var(--m-color-bg-surface);
+  border: 1px solid var(--m-color-border-default);
+  border-radius: var(--m-radius-lg);
+  padding: var(--m-space-4);
+  box-shadow: var(--m-shadow-card);
 }
 
 .tracking-search-bar {
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
+  gap: var(--m-space-2);
+  margin-top: var(--m-space-3);
 }
 
 .tracking-search-input {
   flex: 1;
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-base);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border-default);
-  background: var(--color-bg-subtle);
-  color: var(--color-text-primary);
-  font-family: monospace;
+  min-height: var(--m-touch-target-min);
+  padding: 0 var(--m-space-3);
+  font-size: var(--m-text-sm);
+  border-radius: var(--m-radius-md);
+  border: 1px solid var(--m-color-border-default);
+  background-color: var(--m-color-bg-subtle);
+  color: var(--m-color-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--m-transition-fast);
 }
 
 .tracking-search-input:focus {
-  outline: none;
-  border-color: var(--color-brand-primary);
+  border-color: var(--m-color-brand-accent);
 }
 
 .tracking-card-section {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-lg);
-  padding: var(--space-6);
-  margin-bottom: var(--space-6);
+  background-color: var(--m-color-bg-surface);
+  border: 1px solid var(--m-color-border-default);
+  border-radius: var(--m-radius-lg);
+  padding: var(--m-space-4);
+  box-shadow: var(--m-shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-3);
 }
 
+/* Timeline Layout */
 .tracking-timeline {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: var(--m-space-3);
+  margin: var(--m-space-3) 0;
   position: relative;
-  margin: var(--space-8) 0 var(--space-4) 0;
+  padding-left: var(--m-space-2);
 }
 
-.tracking-timeline::before {
-  content: '';
-  position: absolute;
-  top: 18px;
-  left: 30px;
-  right: 30px;
-  height: 3px;
-  background: var(--color-border-default);
-  z-index: 1;
-}
-
-/* Progress overlay — coloured portion of the timeline line */
-.tracking-timeline::after {
-  content: '';
-  position: absolute;
-  top: 18px;
-  left: 30px;
-  height: 3px;
-  background: var(--color-brand-primary);
-  z-index: 1;
-  width: var(--timeline-progress, 0%);
-  transition: width 0.4s ease;
-}
-
-@media (max-width: 520px) {
+@media (min-width: 600px) {
   .tracking-timeline {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-4);
-    margin: var(--space-5) 0 var(--space-4) 0;
-  }
-
-  .tracking-timeline::before,
-  .tracking-timeline::after {
-    display: none;
-  }
-
-  .tracking-step {
     flex-direction: row;
-    gap: var(--space-3);
+    justify-content: space-between;
     align-items: center;
-  }
-
-  .tracking-step-dot {
-    margin-bottom: 0;
-    flex-shrink: 0;
-  }
-
-  .tracking-step-label {
-    text-align: left;
+    padding-left: 0;
   }
 }
 
 .tracking-step {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  gap: var(--m-space-3);
   position: relative;
-  z-index: 2;
-  flex: 1;
+}
+
+@media (min-width: 600px) {
+  .tracking-step {
+    flex-direction: column;
+    flex: 1;
+    text-align: center;
+    gap: var(--m-space-1);
+  }
 }
 
 .tracking-step-dot {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--color-bg-surface);
-  border: 2px solid var(--color-border-default);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--m-radius-full);
+  background-color: var(--m-color-bg-subtle);
+  border: 2px solid var(--m-color-border-strong);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-xs);
+  font-size: var(--m-text-xs);
   font-weight: 700;
-  color: var(--color-text-tertiary);
-  margin-bottom: var(--space-2);
-  transition: all var(--transition-fast);
+  color: var(--m-color-text-disabled);
+  flex-shrink: 0;
+  transition: all var(--m-transition-fast);
 }
 
 .tracking-step.completed .tracking-step-dot {
-  background: #10B981;
-  border-color: #10B981;
-  color: #ffffff;
+  background-color: var(--m-status-success-dot);
+  border-color: var(--m-status-success-dot);
+  color: #FFFFFF;
 }
 
 .tracking-step.current .tracking-step-dot {
-  background: var(--color-brand-primary);
-  border-color: var(--color-brand-primary);
-  color: #ffffff;
-  box-shadow: 0 0 0 4px var(--color-brand-accent-light);
+  background-color: var(--m-color-brand-accent);
+  border-color: var(--m-color-brand-accent);
+  color: #FFFFFF;
+  box-shadow: 0 0 0 3px var(--m-color-brand-accent-subtle);
 }
 
 .tracking-step-label {
-  font-size: var(--font-size-xs);
+  font-size: var(--m-text-xs);
   font-weight: 600;
-  color: var(--color-text-secondary);
-  text-align: center;
+  color: var(--m-color-text-secondary);
 }
 
 .tracking-step.completed .tracking-step-label,
 .tracking-step.current .tracking-step-label {
-  color: var(--color-text-primary);
+  color: var(--m-color-text-primary);
   font-weight: 700;
 }
 
 .tracking-info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-4);
+  grid-template-columns: 1fr;
+  gap: var(--m-space-3);
+}
+
+@media (min-width: 500px) {
+  .tracking-info-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .tracking-info-box {
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border-default);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
+  background-color: var(--m-color-bg-subtle);
+  border: 1px solid var(--m-color-border-subtle);
+  border-radius: var(--m-radius-md);
+  padding: var(--m-space-3);
 }

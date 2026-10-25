@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, ArrowLeft, Copy, Check, Key, Camera, Banknote } from 'lucide-react';
+import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, Copy, Check, Key, Camera, Banknote } from 'lucide-react';
 import { deliveryService } from '../services/deliveryService';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
+import { MobileHeader } from '../components/mobile';
 import type { PublicTrackingInfo } from '../types';
 import './CustomerTrackingPage.css';
 
@@ -113,37 +114,42 @@ export const CustomerTrackingPage: React.FC = () => {
   const currentStep = trackingInfo ? getStepIndex(trackingInfo.status) : 0;
 
   return (
-    <div className="tracking-page-container">
-      {/* Header & Search Bar Card */}
-      <div className="tracking-header-card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Package size={24} color="var(--color-brand-accent)" />
-            <h1 style={{ fontSize: 'var(--font-size-xl)', fontWeight: 700, margin: 0, color: 'var(--color-text-primary)' }}>
-              OrderFlow Tracking Hub
-            </h1>
-          </div>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')} leftIcon={<ArrowLeft size={16} />}>
-            Home
-          </Button>
-        </div>
-        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', margin: 0 }}>
-          Enter your OrderFlow tracking code (e.g. <code>OF-849201</code>) for real-time delivery status updates.
-        </p>
+    <div className="tracking-page-container" data-testid="customer-tracking-page">
+      <MobileHeader
+        title={trackingInfo?.trackingCode || 'Tracking Hub'}
+        subtitle={trackingInfo?.productName || 'OrderFlow Delivery Tracking'}
+        workspaceBadge="Tracking"
+        showBack
+        onBack={() => navigate(-1)}
+      />
 
-        <form onSubmit={handleSearch} className="tracking-search-bar">
-          <input
-            type="text"
-            className="tracking-search-input"
-            placeholder="Enter Order Tracking Code (e.g. OF-849201)"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
-          <Button variant="primary" type="submit" isLoading={isLoading} leftIcon={<Search size={16} />}>
-            Track Order
-          </Button>
-        </form>
-      </div>
+      <div className="tracking-content-wrapper">
+        {/* Search Bar Card */}
+        <div className="tracking-header-card">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--m-space-2)', marginBottom: 'var(--m-space-2)' }}>
+            <Package size={20} color="var(--m-color-brand-accent)" />
+            <h2 style={{ fontSize: 'var(--m-text-base)', fontWeight: 700, margin: 0, color: 'var(--m-color-text-primary)' }}>
+              OrderFlow Milestone Tracking
+            </h2>
+          </div>
+          <p style={{ fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)', margin: 0 }}>
+            Enter your OrderFlow tracking code (e.g. <code>OF-849201</code>) for real-time delivery status updates.
+          </p>
+
+          <form onSubmit={handleSearch} className="tracking-search-bar">
+            <input
+              type="text"
+              className="tracking-search-input"
+              placeholder="e.g. OF-849201"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              data-testid="tracking-search-input"
+            />
+            <Button variant="primary" type="submit" isLoading={isLoading} leftIcon={<Search size={16} />}>
+              Track
+            </Button>
+          </form>
+        </div>
 
       {/* Loading state */}
       {isLoading ? (
@@ -440,6 +446,7 @@ export const CustomerTrackingPage: React.FC = () => {
           </p>
         </div>
       )}
+      </div>
     </div>
   );
 };

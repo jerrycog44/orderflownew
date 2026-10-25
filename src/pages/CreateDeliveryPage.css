@@ -1,44 +1,58 @@
-/* Create Delivery Wizard Page Layout */
+/* ============================================================================
+   ORDERFLOW DELIVERY CREATION WIZARD MOBILE STYLES
+   Adhering to OrderFlow Mobile Design Bible & Phase 3 Token Architecture
+   ============================================================================ */
+
+.of-create-delivery-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--m-color-bg-app);
+  display: flex;
+  flex-direction: column;
+}
 
 .of-create-delivery-container {
-  max-width: 780px;
+  max-width: 500px;
+  width: 100%;
   margin: 0 auto;
-  padding: var(--space-8) var(--space-4);
+  padding: var(--m-space-3) var(--m-space-4);
+  padding-bottom: calc(var(--m-bottom-nav-height) + var(--m-safe-bottom) + var(--m-space-8));
+  display: flex;
+  flex-direction: column;
+  gap: var(--m-space-4);
 }
 
-.of-create-delivery-header {
-  margin-bottom: var(--space-6);
+@media (min-width: 768px) {
+  .of-create-delivery-container {
+    max-width: 680px;
+    padding: var(--m-space-6) var(--m-space-6);
+  }
 }
 
-.of-create-delivery-back-link {
+/* Wizard card styling conforming to mobile surface token */
+.of-create-delivery-card {
+  background-color: var(--m-color-bg-surface);
+  border: 1px solid var(--m-color-border-default);
+  border-radius: var(--m-radius-lg);
+  padding: var(--m-space-4);
+  box-shadow: var(--m-shadow-card);
+}
+
+/* 48px touch minimum for step action buttons */
+.of-delivery-action-btn {
+  min-height: var(--m-touch-target-min);
+  padding: 0 var(--m-space-4);
+  border-radius: var(--m-radius-md);
+  font-weight: 700;
+  font-size: var(--m-text-sm);
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: none;
+  justify-content: center;
+  gap: var(--m-space-2);
   cursor: pointer;
-  padding: 0;
-  margin-bottom: var(--space-4);
-  transition: color var(--transition-fast);
+  transition: all var(--m-transition-fast);
 }
 
-.of-create-delivery-back-link:hover {
-  color: var(--color-brand-accent);
-}
-
-.of-create-delivery-title {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--color-text-primary);
-  letter-spacing: -0.02em;
-  margin: 0 0 var(--space-1) 0;
-}
-
-.of-create-delivery-subtitle {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  margin: 0;
+.of-delivery-action-btn:active {
+  transform: scale(0.97);
 }

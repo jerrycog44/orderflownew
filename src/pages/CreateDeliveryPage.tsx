@@ -1,51 +1,89 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ShieldCheck, Zap, MapPin, Truck, CheckCircle2 } from 'lucide-react';
 import type { PackageDetails, LocationPoint, LogisticsProvider } from '../types';
+import { useAuth } from '../auth/AuthContext';
+import { logisticsService } from '../services/logisticsService';
 import { StepIndicator } from '../components/delivery/StepIndicator';
 import { PackageStep } from '../components/delivery/PackageStep';
 import { LocationStep } from '../components/delivery/LocationStep';
 import { ReviewStep } from '../components/delivery/ReviewStep';
 import { ProviderSelectionStep } from '../components/delivery/ProviderSelectionStep';
 import { ConfirmationStep } from '../components/delivery/ConfirmationStep';
+import { MobileHeader } from '../components/mobile';
 import { Button } from '../components/ui/Button';
 import './CreateDeliveryPage.css';
 
+const STEP_TITLES: Record<number, string> = {
+  1: 'Package Details',
+  2: 'Pickup & Dropoff',
+  3: 'Review Request',
+  4: 'Dispatch & Settlement',
+};
+
 export const CreateDeliveryPage: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [showManualSelection, setShowManualSelection] = useState(false);
 
-  // Form State across wizard steps
+  // Form State across wizard steps - clean defaults without hardcoded mock records
   const [packageData, setPackageData] = useState<PackageDetails>({
     productName: '',
     itemCategory: 'Fashion & Apparel',
     packageType: 'box',
     quantity: 1,
-    weightKg: 1.5,
-    dimensionsCm: { length: 30, width: 20, height: 12 },
+    weightKg: 1.0,
+    dimensionsCm: { length: 20, width: 20, height: 10 },
     fragile: false,
     notes: '',
   });
 
   const [pickup, setPickup] = useState<LocationPoint>({
-    address: 'Plot 12 Commercial Avenue, Bodija',
+    address: '',
     city: 'Ibadan',
   });
 
   const [destination, setDestination] = useState<LocationPoint>({
-    address: 'No 45 Ring Road, Challenge',
+    address: '',
     city: 'Ibadan',
   });
 
   const [recipient, setRecipient] = useState({
-    name: 'Chioma Okeke',
-    phone: '08129876543',
+    name: '',
+    phone: '',
   });
 
   const [deliveryNote, setDeliveryNote] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<LogisticsProvider | null>(null);
+
+  // Hydrate pickup city from vendor's operating profile if available
+  useEffect(() => {
+    let isMounted = true;
+    if (user?.id) {
+      logisticsService.getVendorProfile(user.id).then((profile) => {
+        if (isMounted && profile?.operatingCity) {
+          setPickup((prev) => (prev.address ? prev : { ...prev, city: profile.operatingCity }));
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
+  const handleStepBack = () => {
+    if (showManualSelection) {
+      setShowManualSelection(false);
+      return;
+    }
+    if (currentStep > 1) {
+      setCurrentStep((prev) => prev - 1);
+    } else {
+      navigate('/vendor/dashboard');
+    }
+  };
 
   const handlePackageNext = (data: PackageDetails) => {
     setPackageData(data);
@@ -70,22 +108,16 @@ export const CreateDeliveryPage: React.FC = () => {
   };
 
   return (
-    <div className="of-create-delivery-container">
-      <div className="of-create-delivery-header">
-        <button
-          type="button"
-          className="of-create-delivery-back-link"
-          onClick={() => navigate('/vendor/dashboard')}
-        >
-          <ArrowLeft size={16} />
-          Back to Vendor Dashboard
-        </button>
+    <div className="of-create-delivery-page" data-testid="create-delivery-page">
+      <MobileHeader
+        title="Create Delivery"
+        subtitle={`Step ${currentStep} of 4 • ${STEP_TITLES[currentStep]}`}
+        workspaceBadge="Vendor"
+        showBack
+        onBack={handleStepBack}
+      />
 
-        <h1 className="of-create-delivery-title">Create New Delivery</h1>
-        <p className="of-create-delivery-subtitle">
-          OrderFlow Smart Dispatch automatically routes your shipment to top verified couriers.
-        </p>
-      </div>
+      <div className="of-create-delivery-container">
 
       {/* Progress Step Bar */}
       <StepIndicator currentStep={currentStep} onStepClick={(s) => setCurrentStep(s)} />
@@ -270,6 +302,7 @@ export const CreateDeliveryPage: React.FC = () => {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );
