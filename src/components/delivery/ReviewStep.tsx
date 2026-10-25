@@ -85,7 +85,7 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
               Weight & Dimensions
             </span>
             <p style={{ fontWeight: 500, color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-              {packageData.weightKg} kg • {packageData.dimensionsCm.length}×{packageData.dimensionsCm.width}×{packageData.dimensionsCm.height} cm
+              {packageData.weightKg} kg{packageData.dimensionsCm ? ` • ${packageData.dimensionsCm.length}×${packageData.dimensionsCm.width}×${packageData.dimensionsCm.height} cm` : ''}
             </p>
           </div>
 

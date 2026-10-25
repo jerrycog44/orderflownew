@@ -424,9 +424,11 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: '4px 0 0 0' }}>
               {packageData.quantity} {packageData.packageType} • {packageData.weightKg} kg
             </p>
-            <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', margin: '2px 0 0 0' }}>
-              {packageData.dimensionsCm.length}×{packageData.dimensionsCm.width}×{packageData.dimensionsCm.height} cm
-            </p>
+            {packageData.dimensionsCm && (
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', margin: '2px 0 0 0' }}>
+                {packageData.dimensionsCm.length}×{packageData.dimensionsCm.width}×{packageData.dimensionsCm.height} cm
+              </p>
+            )}
           </div>
 
           {/* Pickup & Destination */}

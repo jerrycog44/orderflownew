@@ -589,7 +589,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                 Weight & Dimensions
               </span>
               <p style={{ fontWeight: 500, color: 'var(--color-text-primary)', margin: '2px 0 0 0' }}>
-                {delivery.package.weightKg} kg • {delivery.package.dimensionsCm.length}×{delivery.package.dimensionsCm.width}×{delivery.package.dimensionsCm.height} cm
+                {delivery.package.weightKg} kg{delivery.package.dimensionsCm ? ` • ${delivery.package.dimensionsCm.length}×${delivery.package.dimensionsCm.width}×${delivery.package.dimensionsCm.height} cm` : ''}
               </p>
             </div>
           </div>
