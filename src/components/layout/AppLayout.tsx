@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Outlet, useNavigate, Link } from 'react-router-dom';
-import { Truck, LogOut, LayoutDashboard, User as UserIcon, Settings, ChevronDown, Repeat, Search, Plus } from 'lucide-react';
+import { LogOut, LayoutDashboard, User as UserIcon, Settings, ChevronDown, Repeat, Search, Plus } from 'lucide-react';
 import { useAuth } from '../../auth/AuthContext';
 import { logisticsService } from '../../services/logisticsService';
 import { usePlatform } from '../../lib/platform';
@@ -9,6 +9,7 @@ import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { useToast } from '../ui/Toast';
+import { OrderFlowLogo } from '../ui/OrderFlowLogo';
 import { MobileBottomNav } from '../mobile/MobileBottomNav';
 import './AppLayout.css';
 
@@ -144,12 +145,7 @@ export const AppLayout: React.FC = () => {
               className="of-logo"
               aria-label="OrderFlow App Dashboard"
             >
-              <div className="of-logo-icon">
-                <Truck size={18} color="#FFFFFF" />
-              </div>
-              <span className="of-logo-text">
-                Order<span className="of-logo-accent">Flow</span>
-              </span>
+              <OrderFlowLogo size={28} variant="light" showText={true} />
             </Link>
 
             <Badge variant="brand" className="of-app-workspace-badge">
