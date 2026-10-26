@@ -73,9 +73,10 @@ Key achievements of the initiative:
 | **TypeScript Typecheck** | `tsc -b` | ✅ PASSED | 0 errors across entire workspace |
 | **Code Style & Linter** | `oxlint` | ✅ PASSED | 0 errors across 99 project files |
 | **Unit & Integration Tests** | `vitest run` | ✅ PASSED | **18 test files, 157 tests passed (100%)** |
-| **Production Web Bundle** | `vite build` | ✅ PASSED | Bundled in 1.99s; all chunks optimized with gzip |
+| **Production Web Bundle** | `vite build` | ✅ PASSED | Bundled in 11.87s; all chunks optimized with gzip |
 | **Capacitor Asset Sync** | `npx cap sync android` | ✅ PASSED | Copied web assets and updated 5 native plugins |
-| **Android Native Build (APK)**| `gradlew assembleRelease`| ⚠️ BLOCKED | Blocked by missing `JAVA_HOME` / JDK 17 & Android SDK on host |
+| **Test Environment Isolation** | `vitest.config.ts` | ✅ HARDENED | Configured hermetic test env preventing unmocked live DB queries |
+| **Android Native Build (APK)**| `gradlew assembleRelease`| ⚠️ BLOCKED | Blocked locally: missing `JAVA_HOME` / JDK 17 & Android SDK on host |
 
 ### Test Suite Breakdown:
 1. `src/lib/__tests__/capacitorAndroidPackaging.test.ts` (8 tests) — Native bridge & Capacitor configuration
