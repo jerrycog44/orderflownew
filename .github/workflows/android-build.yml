@@ -2,13 +2,15 @@ name: Build Android APK
 
 on:
   push:
+    branches:
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
 
 jobs:
   build-apk:
-    name: Build Android Release APK
+    name: Build Android APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -25,9 +27,19 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Accept Android SDK Licenses & Install Components
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0" || \
+          sdkmanager --install "platforms;android-36" || \
+          sdkmanager --channel=3 --install "platforms;android-36" || true
 
       - name: Install Node Dependencies
         run: npm ci
@@ -38,15 +50,22 @@ jobs:
       - name: Sync Capacitor Android Project
         run: npx cap sync android
 
-      - name: Build Android APK with Gradle
+      - name: Build Android APKs with Gradle
         run: |
           cd android
           chmod +x ./gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug assembleRelease
 
-      - name: Upload APK Release Artifact
+      - name: Upload Debug APK (Installable)
         uses: actions/upload-artifact@v4
         with:
-          name: orderflow-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: orderflow-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: Upload Release APK (Unsigned)
+        uses: actions/upload-artifact@v4
+        with:
+          name: orderflow-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
           retention-days: 30
