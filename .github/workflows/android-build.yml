@@ -48,7 +48,9 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor Android Project
-        run: npx cap sync android
+        run: |
+          chmod +x android/gradlew
+          npx cap sync android
 
       - name: Build Android APKs with Gradle
         run: |
