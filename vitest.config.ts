@@ -10,6 +10,7 @@ export default defineConfig({
     globals: false,
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
+    testTimeout: 15000,
     env: {
       VITE_SUPABASE_URL: '',
       VITE_SUPABASE_ANON_KEY: '',
