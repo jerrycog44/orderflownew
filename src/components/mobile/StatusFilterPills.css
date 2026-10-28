@@ -8,9 +8,6 @@
   align-items: center;
   gap: var(--m-space-2);
   overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
   padding: var(--m-space-2) var(--m-space-4);
   background-color: var(--m-color-bg-app);
 }
@@ -36,6 +33,7 @@
   cursor: pointer;
   transition: all var(--m-transition-fast);
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
   user-select: none;
   flex-shrink: 0;
 }

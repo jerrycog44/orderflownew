@@ -16,6 +16,7 @@
   transition: transform var(--m-transition-fast), box-shadow var(--m-transition-fast), border-color var(--m-transition-fast);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
   user-select: none;
 }
 
