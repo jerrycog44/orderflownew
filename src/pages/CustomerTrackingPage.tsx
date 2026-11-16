@@ -1,7 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, Copy, Check, Key, Camera, Banknote } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Package, Search, Truck, CheckCircle2, Clock, ShieldCheck, Copy, Check, Key, Camera, Banknote, Lock } from 'lucide-react';
 import { deliveryService } from '../services/deliveryService';
+import {
+  buildPublicTrackingUrl,
+  extractRecipientTokenFromHash,
+  getRecipientTokenForSession,
+  saveRecipientTokenForSession,
+  scrubUrlHashFragment,
+} from '../lib/trackingLinks';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { MobileHeader } from '../components/mobile';
@@ -26,6 +33,7 @@ const getStepIndex = (status: string): number => {
       return 1;
     case 'provider_selected':
     case 'awaiting_pickup':
+    case 'picked_up':
       return 2;
     case 'in_transit':
       return 3;
@@ -38,16 +46,21 @@ const getStepIndex = (status: string): number => {
 
 export const CustomerTrackingPage: React.FC = () => {
   const { trackingCode } = useParams<{ trackingCode?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState(trackingCode || '');
   const [trackingInfo, setTrackingInfo] = useState<PublicTrackingInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searched, setSearched] = useState(Boolean(trackingCode));
   const [copied, setCopied] = useState(false);
+  const activeTokenRef = useRef<string | null>(null);
 
   const handleCopyLink = async () => {
+    const codeToShare = trackingInfo?.trackingCode || trackingCode;
+    if (!codeToShare) return;
+    const cleanPublicUrl = buildPublicTrackingUrl(codeToShare);
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(cleanPublicUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -58,11 +71,32 @@ export const CustomerTrackingPage: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    async function loadTracking(code: string) {
+    const rawHash =
+      location.hash || (typeof window !== 'undefined' ? window.location.hash : '');
+    const tokenFromHash = extractRecipientTokenFromHash(rawHash);
+
+    if (rawHash) {
+      scrubUrlHashFragment();
+    }
+
+    let resolvedToken: string | null = null;
+    if (trackingCode) {
+      if (tokenFromHash) {
+        saveRecipientTokenForSession(trackingCode, tokenFromHash);
+        resolvedToken = tokenFromHash;
+      } else {
+        resolvedToken = getRecipientTokenForSession(trackingCode);
+      }
+    }
+    activeTokenRef.current = resolvedToken;
+
+    async function loadTracking(code: string, recipientToken: string | null) {
       setIsLoading(true);
       setSearched(true);
       try {
-        const info = await deliveryService.getPublicTracking(code);
+        const info = recipientToken
+          ? await deliveryService.getPublicTracking(code, recipientToken)
+          : await deliveryService.getPublicTracking(code);
         if (isMounted) {
           setTrackingInfo(info);
         }
@@ -79,20 +113,25 @@ export const CustomerTrackingPage: React.FC = () => {
     }
 
     if (trackingCode) {
-      loadTracking(trackingCode);
+      loadTracking(trackingCode, resolvedToken);
     }
 
     return () => {
       isMounted = false;
     };
-  }, [trackingCode]);
+  }, [trackingCode, location.hash]);
 
   // Realtime subscription for customer package tracking progression
   useEffect(() => {
     if (!trackingCode) return;
 
     const unsubscribe = deliveryService.subscribeToDelivery(trackingCode, () => {
-      deliveryService.getPublicTracking(trackingCode)
+      const token = activeTokenRef.current;
+      const promise = token
+        ? deliveryService.getPublicTracking(trackingCode, token)
+        : deliveryService.getPublicTracking(trackingCode);
+
+      promise
         .then((info) => {
           if (info) setTrackingInfo(info);
         })
@@ -108,7 +147,7 @@ export const CustomerTrackingPage: React.FC = () => {
     e.preventDefault();
     const clean = searchInput.trim();
     if (!clean) return;
-    navigate(`/track/${clean}`);
+    navigate(`/track/${encodeURIComponent(clean)}`);
   };
 
   const currentStep = trackingInfo ? getStepIndex(trackingInfo.status) : 0;
@@ -183,6 +222,8 @@ export const CustomerTrackingPage: React.FC = () => {
                 variant={
                   trackingInfo.status === 'delivered'
                     ? 'success'
+                    : trackingInfo.status === 'cancelled'
+                    ? 'error'
                     : trackingInfo.status === 'in_transit'
                     ? 'brand'
                     : trackingInfo.status === 'provider_selected' || trackingInfo.status === 'awaiting_pickup'
@@ -195,7 +236,7 @@ export const CustomerTrackingPage: React.FC = () => {
                   : trackingInfo.status.replace(/_/g, ' ').toUpperCase()}
               </Badge>
 
-              <Button variant="outline" size="sm" onClick={handleCopyLink}>
+              <Button variant="outline" size="sm" onClick={handleCopyLink} data-testid="share-public-link-btn">
                 {copied ? <Check size={14} style={{ marginRight: '4px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '4px' }} />}
                 {copied ? 'Link Copied' : 'Share Link'}
               </Button>
@@ -228,64 +269,70 @@ export const CustomerTrackingPage: React.FC = () => {
             })}
           </div>
 
-          {/* Cash on Delivery (COD) Payment Guidance */}
-          {trackingInfo.status !== 'delivered' && trackingInfo.paymentMethod === 'cash_on_delivery' && (
-            <div
-              style={{
-                background: 'rgba(245, 158, 11, 0.08)',
-                border: '1px solid rgba(245, 158, 11, 0.28)',
-                borderRadius: 'var(--radius-md)',
-                padding: 'var(--space-4)',
-                margin: 'var(--space-6) 0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 'var(--space-3)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-                <div
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: 'var(--radius-full)',
-                    background: 'rgba(245, 158, 11, 0.15)',
-                    color: '#D97706',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
-                  <Banknote size={20} />
-                </div>
-                <div>
-                  <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#D97706', textTransform: 'uppercase' }}>
-                    Payment on Delivery Required
-                  </span>
-                  <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                    Have cash or mobile bank transfer ready upon courier arrival. Remittance is confirmed upon handover.
-                  </p>
-                </div>
-              </div>
-
-              {trackingInfo.amountDue !== undefined && (
-                <div style={{ textAlign: 'right' }}>
-                  <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
-                    Amount Due
-                  </span>
-                  <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: '#B45309' }}>
-                    ₦{trackingInfo.amountDue.toLocaleString()}
+          {/* Cash on Delivery (COD) Payment Guidance (Case B authorized recipients only) */}
+          {trackingInfo.status !== 'delivered' &&
+            trackingInfo.status !== 'cancelled' &&
+            trackingInfo.paymentMethod === 'cash_on_delivery' && (
+              <div
+                data-testid="cod-payment-guidance"
+                style={{
+                  background: 'rgba(245, 158, 11, 0.08)',
+                  border: '1px solid rgba(245, 158, 11, 0.28)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                  margin: 'var(--space-6) 0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-3)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  <div
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: 'var(--radius-full)',
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      color: '#D97706',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Banknote size={20} />
+                  </div>
+                  <div>
+                    <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: '#D97706', textTransform: 'uppercase' }}>
+                      Payment on Delivery Required
+                    </span>
+                    <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                      Have cash or mobile bank transfer ready upon courier arrival. Remittance is confirmed upon handover.
+                    </p>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Proof of Delivery (POD) Handover Section for Recipient */}
-          {trackingInfo.status !== 'delivered' && trackingInfo.podVerificationCode && (
+                {trackingInfo.amountDue !== undefined && trackingInfo.amountDue !== null && (
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--color-text-secondary)', textTransform: 'uppercase', fontWeight: 600 }}>
+                      Amount Due
+                    </span>
+                    <div style={{ fontSize: 'var(--font-size-xl)', fontWeight: 800, color: '#B45309' }}>
+                      ₦{trackingInfo.amountDue.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+          {/* Proof of Delivery (POD) Handover PIN for Authorized Recipient (Case B) */}
+          {trackingInfo.status !== 'delivered' &&
+          trackingInfo.status !== 'cancelled' &&
+          trackingInfo.podVerificationCode ? (
             <div
+              data-testid="recipient-handover-pin-card"
               style={{
                 background: 'rgba(16, 185, 129, 0.08)',
                 border: '1px solid rgba(16, 185, 129, 0.25)',
@@ -326,6 +373,7 @@ export const CustomerTrackingPage: React.FC = () => {
               </div>
 
               <div
+                data-testid="recipient-handover-pin-value"
                 style={{
                   fontFamily: 'monospace',
                   fontSize: 'var(--font-size-2xl)',
@@ -342,7 +390,31 @@ export const CustomerTrackingPage: React.FC = () => {
                 {trackingInfo.podVerificationCode}
               </div>
             </div>
-          )}
+          ) : trackingInfo.status !== 'delivered' && trackingInfo.status !== 'cancelled' ? (
+            <div
+              data-testid="protected-pin-notice"
+              style={{
+                background: 'var(--color-bg-subtle)',
+                border: '1px solid var(--color-border-default)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                margin: 'var(--space-6) 0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--space-3)',
+              }}
+            >
+              <Lock size={18} color="var(--color-text-tertiary)" style={{ flexShrink: 0 }} />
+              <div>
+                <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)', textTransform: 'uppercase' }}>
+                  Handover PIN Protected
+                </span>
+                <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
+                  Open the private recipient tracking link sent by the vendor to view your 4-digit handover PIN and payment summary.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {trackingInfo.status === 'delivered' && (
             <div

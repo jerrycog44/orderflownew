@@ -6,6 +6,7 @@
  *   - supabase/migrations/002_fix_auth_flow.sql
  *   - supabase/migrations/003_dispatch_concurrency_and_security.sql
  *   - supabase/migrations/004_atomic_dispatch_and_security_hardening.sql
+ *   - supabase/migrations/005_pod_payments_and_rls_hardening.sql
  *
  * Format matches `supabase gen types typescript` output so the typed client
  * (`createClient<Database>`) resolves table/RPC types correctly. Requirements
@@ -242,6 +243,12 @@ export type Database = {
           estimated_price: number;
           estimated_delivery_time: string | null;
           idempotency_key: string | null;
+          payment_method: Database['public']['Enums']['payment_method_enum'] | null;
+          payment_status: Database['public']['Enums']['payment_status_enum'] | null;
+          require_photo_proof: boolean;
+          pod_photo_url: string | null;
+          pod_completed_at: string | null;
+          pod_failed_attempts: number;
           created_at: string;
           updated_at: string;
         };
@@ -265,6 +272,12 @@ export type Database = {
           estimated_price: number;
           estimated_delivery_time?: string | null;
           idempotency_key?: string | null;
+          payment_method?: Database['public']['Enums']['payment_method_enum'] | null;
+          payment_status?: Database['public']['Enums']['payment_status_enum'] | null;
+          require_photo_proof?: boolean;
+          pod_photo_url?: string | null;
+          pod_completed_at?: string | null;
+          pod_failed_attempts?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -288,6 +301,12 @@ export type Database = {
           estimated_price?: number;
           estimated_delivery_time?: string | null;
           idempotency_key?: string | null;
+          payment_method?: Database['public']['Enums']['payment_method_enum'] | null;
+          payment_status?: Database['public']['Enums']['payment_status_enum'] | null;
+          require_photo_proof?: boolean;
+          pod_photo_url?: string | null;
+          pod_completed_at?: string | null;
+          pod_failed_attempts?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -470,6 +489,44 @@ export type Database = {
           },
         ];
       };
+      delivery_pod_secrets: {
+        Row: {
+          delivery_id: string;
+          pin_code: string;
+          recipient_token: string;
+          token_expires_at: string;
+          token_revoked_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          delivery_id: string;
+          pin_code: string;
+          recipient_token: string;
+          token_expires_at?: string;
+          token_revoked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          delivery_id?: string;
+          pin_code?: string;
+          recipient_token?: string;
+          token_expires_at?: string;
+          token_revoked_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'delivery_pod_secrets_delivery_id_fkey';
+            columns: ['delivery_id'];
+            isOneToOne: true;
+            referencedRelation: 'deliveries';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       // Postgres cannot prove view column nullability, so generated types mark all view columns nullable.
@@ -490,7 +547,10 @@ export type Database = {
     };
     Functions: {
       get_public_tracking: {
-        Args: { p_tracking_code: string };
+        Args: {
+          p_tracking_code: string;
+          p_recipient_token?: string | null;
+        };
         Returns: {
           tracking_code: string;
           status: Database['public']['Enums']['delivery_status'];
@@ -501,11 +561,15 @@ export type Database = {
           vendor_name: string;
           provider_name: string | null;
           provider_logo_url: string | null;
+          recipient_access_granted: boolean;
+          payment_method: Database['public']['Enums']['payment_method_enum'] | null;
+          payment_status: Database['public']['Enums']['payment_status_enum'] | null;
+          amount_due: number | null;
+          require_photo_proof: boolean | null;
+          has_photo_proof: boolean | null;
+          pod_photo_url: string | null;
+          pod_verification_code: string | null;
         }[];
-      };
-      has_active_dispatch_opportunity: {
-        Args: { p_delivery_id: string; p_provider_id: string };
-        Returns: boolean;
       };
       is_delivery_owner: {
         Args: { p_delivery_id: string; p_vendor_id: string };
@@ -560,6 +624,8 @@ export type Database = {
           p_selected_provider_id?: string | null;
           p_candidate_provider_ids?: string[] | null;
           p_idempotency_key?: string | null;
+          p_payment_method?: Database['public']['Enums']['payment_method_enum'] | null;
+          p_require_photo_proof?: boolean | null;
         };
         Returns: {
           success: boolean;
@@ -568,10 +634,47 @@ export type Database = {
           tracking_code: string;
           status: Database['public']['Enums']['delivery_status'];
           provider_id: string | null;
+          payment_method: Database['public']['Enums']['payment_method_enum'] | null;
+          payment_status: Database['public']['Enums']['payment_status_enum'] | null;
+          require_photo_proof: boolean;
+          pod_verification_code: string | null;
+          recipient_tracking_token: string | null;
           current_opportunity_provider_id: string | null;
           candidate_provider_ids: string[];
           created_at: string;
           updated_at: string;
+        };
+      };
+      complete_delivery_with_pod: {
+        Args: {
+          p_delivery_id: string;
+          p_verification_code: string;
+          p_photo_url?: string | null;
+          p_notes?: string | null;
+        };
+        Returns: {
+          success: boolean;
+          code?: string;
+          error?: string;
+          attempts_remaining?: number;
+          delivery_id?: string;
+          status?: Database['public']['Enums']['delivery_status'];
+          payment_status?: Database['public']['Enums']['payment_status_enum'] | null;
+          pod_completed_at?: string;
+        };
+      };
+      rotate_delivery_pod_secrets: {
+        Args: {
+          p_delivery_id: string;
+        };
+        Returns: {
+          success: boolean;
+          code?: string;
+          error?: string;
+          delivery_id?: string;
+          pod_verification_code?: string;
+          recipient_tracking_token?: string;
+          token_expires_at?: string;
         };
       };
       transition_delivery_status: {
@@ -632,6 +735,8 @@ export type Database = {
       dispatch_mode_enum: 'auto' | 'manual';
       package_type_enum: 'parcel' | 'box' | 'bag' | 'fragile_item' | 'other';
       opportunity_status_enum: 'queued' | 'sent' | 'accepted' | 'declined' | 'expired' | 'skipped';
+      payment_method_enum: 'cash_on_delivery' | 'pay_at_pickup' | 'prepaid_online';
+      payment_status_enum: 'pending' | 'collected' | 'remitted';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -657,9 +762,17 @@ export type DeliveryStatus = Enums<'delivery_status'>;
 export type DispatchMode = Enums<'dispatch_mode_enum'>;
 export type PackageType = Enums<'package_type_enum'>;
 export type OpportunityStatus = Enums<'opportunity_status_enum'>;
+export type PaymentMethodEnum = Enums<'payment_method_enum'>;
+export type PaymentStatusEnum = Enums<'payment_status_enum'>;
 
 export type CreateDeliveryTransactionalResult =
   Database['public']['Functions']['create_delivery_transactional']['Returns'];
+export type CompleteDeliveryWithPodResult =
+  Database['public']['Functions']['complete_delivery_with_pod']['Returns'];
+export type RotateDeliveryPodSecretsResult =
+  Database['public']['Functions']['rotate_delivery_pod_secrets']['Returns'];
+export type PublicTrackingRow =
+  Database['public']['Functions']['get_public_tracking']['Returns'][number];
 export type MarketplaceOpportunity =
   Database['public']['Functions']['get_marketplace_opportunities']['Returns'][number];
 export type TransitionDeliveryStatusResult =

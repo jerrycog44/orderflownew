@@ -764,7 +764,9 @@ export const ProviderDashboardPage: React.FC = () => {
                           ? `COD: ₦${job.estimatedPrice.toLocaleString()}`
                           : job.paymentMethod === 'pay_at_pickup'
                           ? 'Pay at Pickup'
-                          : 'Prepaid Online'}
+                          : job.paymentMethod === 'prepaid_online'
+                          ? 'Prepaid Online'
+                          : 'Settlement: Confirm with Vendor'}
                       </span>
 
                       {job.requirePhotoProof && (
@@ -969,6 +971,22 @@ export const ProviderDashboardPage: React.FC = () => {
                     Collect ₦{podModalJob.estimatedPrice.toLocaleString()} from customer in cash or instant transfer before handing over.
                   </span>
                 </div>
+              </div>
+            )}
+
+            {!podModalJob.paymentMethod && (
+              <div
+                data-testid="rider-legacy-payment-notice"
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 'var(--m-radius-md)',
+                  background: 'var(--m-color-bg-subtle)',
+                  border: '1px solid var(--m-color-border-default)',
+                  fontSize: 'var(--m-text-xs)',
+                  color: 'var(--m-color-text-secondary)',
+                }}
+              >
+                <strong>Settlement: Confirm with Vendor</strong> — Payment method was not recorded on this historical order.
               </div>
             )}
 

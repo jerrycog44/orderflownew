@@ -9,18 +9,18 @@
  *     migrations must REVOKE from anon/authenticated explicitly.
  *   - the supabase_realtime publication
  *
- * Limitation: PGlite is a single connection, so true concurrent races cannot
- * be reproduced here. Serialization logic is verified by sequential
- * interleavings; parallel-connection race tests belong in a Docker/Supabase
- * CLI integration job.
+ * Limitation: PGlite is a single-user embedded WASM engine, so true multi-session
+ * concurrent lock races and full non-superuser role login isolation belong in the
+ * real PostgreSQL 15+ verification job (`supabase/tests/005_postgres_security_verify.sql`).
  */
 import { PGlite, type Transaction } from '@electric-sql/pglite';
 import m001 from '../../../supabase/migrations/001_initial_schema.sql?raw';
 import m002 from '../../../supabase/migrations/002_fix_auth_flow.sql?raw';
 import m003 from '../../../supabase/migrations/003_dispatch_concurrency_and_security.sql?raw';
 import m004 from '../../../supabase/migrations/004_atomic_dispatch_and_security_hardening.sql?raw';
+import m005 from '../../../supabase/migrations/005_pod_payments_and_rls_hardening.sql?raw';
 
-const SUPABASE_SHIM = `
+export const SUPABASE_SHIM = `
   CREATE ROLE anon NOLOGIN;
   CREATE ROLE authenticated NOLOGIN;
   CREATE ROLE service_role NOLOGIN BYPASSRLS;
@@ -51,13 +51,27 @@ const SUPABASE_SHIM = `
   CREATE PUBLICATION supabase_realtime;
 `;
 
-export const MIGRATIONS = [m001, m002, m003, m004];
+export const MIGRATIONS = [m001, m002, m003, m004, m005];
+export const MIGRATION_005 = m005;
+
+export async function createDatabaseThrough004(): Promise<PGlite> {
+  const db = await PGlite.create();
+  await db.exec(SUPABASE_SHIM);
+  for (const sqlText of [m001, m002, m003, m004]) {
+    await db.exec(sqlText);
+  }
+  return db;
+}
+
+export async function applyMigration005(db: PGlite): Promise<void> {
+  await db.exec(m005);
+}
 
 export async function createMigratedDatabase(): Promise<PGlite> {
   const db = await PGlite.create();
   await db.exec(SUPABASE_SHIM);
-  for (const sql of MIGRATIONS) {
-    await db.exec(sql);
+  for (const sqlText of MIGRATIONS) {
+    await db.exec(sqlText);
   }
   return db;
 }

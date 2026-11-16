@@ -14,12 +14,14 @@ import {
   Camera,
   ShieldCheck,
   CheckCircle2,
+  Key,
 } from 'lucide-react';
 import type { PackageDetails, LocationPoint, LogisticsProvider, DeliveryRecord, PaymentMethod } from '../../types';
 import { useAuth } from '../../auth/AuthContext';
 import { deliveryService } from '../../services/deliveryService';
 import { logisticsService } from '../../services/logisticsService';
-import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../../lib/whatsapp';
+import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage } from '../../lib/whatsapp';
+import { buildPublicTrackingUrl, buildRecipientTrackingUrl } from '../../lib/trackingLinks';
 import { Button } from '../ui/Button';
 
 export interface ConfirmationStepProps {
@@ -52,6 +54,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
   const [createdDelivery, setCreatedDelivery] = useState<DeliveryRecord | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedRecipientLink, setCopiedRecipientLink] = useState(false);
 
   // Synchronous ref lock to prevent duplicate rapid submissions
   const isSubmittingRef = React.useRef(false);
@@ -73,11 +76,26 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
   const handleCopyTrackingLink = async () => {
     if (!createdDelivery) return;
-    const url = getPublicTrackingUrl(createdDelivery.trackingCode || createdDelivery.id);
+    const url = buildPublicTrackingUrl(createdDelivery.trackingCode || createdDelivery.id);
     try {
       await navigator.clipboard.writeText(url);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleCopyRecipientLink = async () => {
+    if (!createdDelivery?.recipientTrackingToken) return;
+    try {
+      const url = buildRecipientTrackingUrl(
+        createdDelivery.trackingCode || createdDelivery.id,
+        createdDelivery.recipientTrackingToken
+      );
+      await navigator.clipboard.writeText(url);
+      setCopiedRecipientLink(true);
+      setTimeout(() => setCopiedRecipientLink(false), 2000);
     } catch {
       // Fallback
     }
@@ -108,7 +126,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
         estimatedPrice: dynamicPricing.price,
         estimatedDeliveryTime: dynamicPricing.transitTime,
         paymentMethod,
-        paymentStatus: paymentMethod === 'prepaid_online' ? 'collected' : 'pending',
+        paymentStatus: 'pending',
         requirePhotoProof,
       });
 
@@ -233,7 +251,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                 ? 'Cash on Delivery (Pay on Handover)'
                 : createdDelivery.paymentMethod === 'pay_at_pickup'
                 ? 'Pay at Pickup'
-                : 'Prepaid Online'}
+                : 'Not Recorded'}
             </span>
           </div>
 
@@ -298,10 +316,27 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
             Share Tracking & PIN on WhatsApp
           </a>
 
+          {createdDelivery.recipientTrackingToken && (
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleCopyRecipientLink}
+              data-testid="copy-recipient-tracking-link-btn"
+            >
+              {copiedRecipientLink ? (
+                <Check size={16} style={{ marginRight: '6px', color: '#10B981' }} />
+              ) : (
+                <Key size={16} style={{ marginRight: '6px', color: '#059669' }} />
+              )}
+              {copiedRecipientLink ? 'Recipient Link Copied!' : 'Copy Recipient Link (With PIN)'}
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="md"
             onClick={handleCopyTrackingLink}
+            data-testid="copy-public-tracking-link-btn"
           >
             {copiedLink ? <Check size={16} style={{ marginRight: '6px', color: '#10B981' }} /> : <Copy size={16} style={{ marginRight: '6px' }} />}
             {copiedLink ? 'Tracking Link Copied!' : 'Copy Public Tracking Link'}
@@ -463,7 +498,16 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)' }}>
             {/* Option 1: Cash on Delivery */}
             <div
+              role="button"
+              tabIndex={0}
+              data-testid="payment-option-cod"
               onClick={() => setPaymentMethod('cash_on_delivery')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setPaymentMethod('cash_on_delivery');
+                }
+              }}
               style={{
                 cursor: 'pointer',
                 border: paymentMethod === 'cash_on_delivery' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
@@ -491,7 +535,16 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
 
             {/* Option 2: Pay at Pickup */}
             <div
+              role="button"
+              tabIndex={0}
+              data-testid="payment-option-pay-at-pickup"
               onClick={() => setPaymentMethod('pay_at_pickup')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setPaymentMethod('pay_at_pickup');
+                }
+              }}
               style={{
                 cursor: 'pointer',
                 border: paymentMethod === 'pay_at_pickup' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
@@ -514,31 +567,33 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
               </p>
             </div>
 
-            {/* Option 3: Online Gateway (Paystack / Flutterwave / Interswitch) */}
+            {/* Option 3: Online Gateway — Disabled until verified webhook integration */}
             <div
-              onClick={() => setPaymentMethod('prepaid_online')}
+              role="button"
+              aria-disabled="true"
+              data-testid="payment-option-prepaid-online"
               style={{
-                cursor: 'pointer',
-                border: paymentMethod === 'prepaid_online' ? '2px solid var(--color-brand-accent)' : '1px solid var(--color-border-default)',
-                background: paymentMethod === 'prepaid_online' ? 'var(--color-brand-accent-light)' : 'var(--color-bg-subtle)',
+                cursor: 'not-allowed',
+                opacity: 0.55,
+                border: '1px dashed var(--color-border-default)',
+                background: 'var(--color-bg-subtle)',
                 borderRadius: 'var(--radius-md)',
                 padding: 'var(--space-3)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 'var(--space-1)',
-                transition: 'all 0.15s ease',
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontWeight: 700, fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <CreditCard size={16} /> Digital Card / Gateway
                 </span>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--color-text-tertiary)', background: 'var(--color-bg-surface)', padding: '2px 6px', borderRadius: '4px' }}>
-                  READY
+                <span style={{ fontSize: '10px', fontWeight: 700, color: '#6B7280', background: 'var(--color-bg-surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--color-border-subtle)' }}>
+                  UNAVAILABLE
                 </span>
               </div>
-              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: 0 }}>
-                Interswitch WebPAY, Paystack & Flutterwave pre-authorization.
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', margin: 0 }}>
+                Online prepaid settlement is disabled until verified gateway webhook confirmation is live.
               </p>
             </div>
           </div>

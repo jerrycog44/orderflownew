@@ -2,26 +2,77 @@ import type {
   DeliveryRecord,
   DeliveryStatus,
   PackageType,
+  PaymentMethod,
+  PaymentStatus,
   PublicTrackingInfo,
 } from '../types';
 import { INITIAL_SEED_DELIVERIES } from '../data/mockDeliveries';
 import { logisticsService } from './logisticsService';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { realtimeService } from './realtimeService';
+import { RECIPIENT_TOKEN_REGEX } from '../lib/trackingLinks';
 
 const STORAGE_KEY = 'of_dev_deliveries';
+const POD_PIN_REGEX = /^[1-9][0-9]{3}$/;
+const POD_PHOTO_URL_REGEX =
+  /^(https:\/\/\S+|data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+)$/;
+const MAX_POD_PHOTO_BYTES = 2 * 1024 * 1024;
+const MAX_POD_FAILED_ATTEMPTS = 5;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const isUuid = (val: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
 
 /**
+ * Generates a uniform 4-digit PIN in [1000..9999] (never '0000') via CSPRNG
+ * rejection sampling for offline/demo mode.
+ */
+function generateSecurePodPin(): string {
+  const buf = new Uint16Array(1);
+  while (true) {
+    crypto.getRandomValues(buf);
+    const candidate = buf[0] & 0x3fff; // 0..16383
+    if (candidate < 9000) {
+      return String(1000 + candidate);
+    }
+  }
+}
+
+/**
+ * Generates a 256-bit (64 lowercase hex characters) recipient capability token
+ * via CSPRNG for offline/demo mode.
+ */
+function generateSecureRecipientToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Constant-time string comparison for fixed-format offline secrets.
+ */
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
  * Maps database delivery row with joined relationships into domain `DeliveryRecord`.
+ * Preserves `undefined` for nullable historical `payment_method` / `payment_status`
+ * so legacy pre-005 orders are never misclassified as COD or Prepaid Online.
  */
 function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
   const pkg =
     (Array.isArray(row.package_details)
       ? row.package_details[0]
       : row.package_details) || {};
+  const secret = Array.isArray(row.delivery_pod_secrets)
+    ? row.delivery_pod_secrets[0]
+    : row.delivery_pod_secrets;
   const provider = row.logistics_providers;
   const vendorName = row.vendors?.business_name || 'Commercial Vendor';
 
@@ -43,8 +94,8 @@ function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
           estimatedDeliveryTime: row.estimated_delivery_time || 'Same Day',
           vehicleTypes: provider.vehicle_types || ['Motorcycle', 'Van'],
           supportedPackageTypes: (provider.package_categories || ['parcel']) as PackageType[],
-          rating: provider.rating || 4.8,
-          reviewCount: provider.review_count || 120,
+          rating: provider.rating ?? 5.0,
+          reviewCount: provider.review_count ?? 0,
           capacity: 'Standard Fleet',
         }
       : undefined,
@@ -83,9 +134,14 @@ function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
     dispatchMode: row.dispatch_mode as 'auto' | 'manual',
     estimatedPrice: row.estimated_price,
     estimatedDeliveryTime: row.estimated_delivery_time || 'Same Day',
-    paymentMethod: row.payment_method || 'cash_on_delivery',
-    paymentStatus: row.payment_status || 'pending',
-    podVerificationCode: row.pod_verification_code || undefined,
+    paymentMethod: (row.payment_method as PaymentMethod | null) ?? undefined,
+    paymentStatus: (row.payment_status as PaymentStatus | null) ?? undefined,
+    podVerificationCode: secret?.pin_code || row.pod_verification_code || undefined,
+    recipientTrackingToken: secret?.recipient_token ?? undefined,
+    podTokenExpiresAt: secret?.token_expires_at ?? undefined,
+    podTokenRevokedAt: secret?.token_revoked_at ?? undefined,
+    podFailedAttempts:
+      typeof row.pod_failed_attempts === 'number' ? row.pod_failed_attempts : 0,
     requirePhotoProof: Boolean(row.require_photo_proof),
     podPhotoUrl: row.pod_photo_url || undefined,
     podCompletedAt: row.pod_completed_at || undefined,
@@ -94,18 +150,60 @@ function mapDatabaseRowToDelivery(row: any): DeliveryRecord {
   };
 }
 
+function normalizeOfflineDeliveries(records: DeliveryRecord[]): {
+  records: DeliveryRecord[];
+  mutated: boolean;
+} {
+  let mutated = false;
+  const normalized = records.map((item) => {
+    const isTerminal = item.status === 'delivered' || item.status === 'cancelled';
+    if (isTerminal) {
+      return item;
+    }
+
+    let next = item;
+    if (!next.podVerificationCode || !POD_PIN_REGEX.test(next.podVerificationCode)) {
+      next = { ...next, podVerificationCode: generateSecurePodPin() };
+      mutated = true;
+    }
+    if (
+      !next.recipientTrackingToken ||
+      !RECIPIENT_TOKEN_REGEX.test(next.recipientTrackingToken.toLowerCase())
+    ) {
+      next = {
+        ...next,
+        recipientTrackingToken: generateSecureRecipientToken(),
+        podTokenExpiresAt:
+          next.podTokenExpiresAt || new Date(Date.now() + SEVEN_DAYS_MS).toISOString(),
+      };
+      mutated = true;
+    }
+    if (typeof next.podFailedAttempts !== 'number') {
+      next = { ...next, podFailedAttempts: 0 };
+      mutated = true;
+    }
+    return next;
+  });
+
+  return { records: normalized, mutated };
+}
+
 export const deliveryService = {
   /**
-   * Retrieves all deliveries from localStorage in offline/demo mode.
+   * Retrieves all deliveries from localStorage in offline/demo mode, backfilling
+   * non-destructive POD secrets on active records if absent.
    */
   getAllDeliveriesSync(): DeliveryRecord[] {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_SEED_DELIVERIES));
-        return INITIAL_SEED_DELIVERIES;
+      const parsed: DeliveryRecord[] = raw
+        ? JSON.parse(raw)
+        : INITIAL_SEED_DELIVERIES.map((d) => ({ ...d }));
+      const { records, mutated } = normalizeOfflineDeliveries(parsed);
+      if (!raw || mutated) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
       }
-      return JSON.parse(raw);
+      return records;
     } catch {
       return INITIAL_SEED_DELIVERIES;
     }
@@ -121,7 +219,6 @@ export const deliveryService = {
   /**
    * Retrieves deliveries created by a specific vendor.
    * When Supabase is configured, queries the `deliveries` table scoped strictly to `vendor_id`.
-   * Completely eliminates cross-vendor data leakage.
    */
   async getVendorDeliveries(vendorId: string): Promise<DeliveryRecord[]> {
     if (isSupabaseConfigured) {
@@ -131,6 +228,7 @@ export const deliveryService = {
           .select(`
             *,
             package_details (*),
+            delivery_pod_secrets (pin_code, recipient_token, token_expires_at, token_revoked_at),
             logistics_providers (*),
             vendors (business_name)
           `)
@@ -148,7 +246,6 @@ export const deliveryService = {
       }
     }
 
-    // Offline / Demo fallback: strictly match vendorId (or seed data if vendorId matches seed)
     const all = this.getAllDeliveriesSync();
     return all.filter((d) => d.vendorId === vendorId);
   },
@@ -165,6 +262,7 @@ export const deliveryService = {
           .select(`
             *,
             package_details (*),
+            delivery_pod_secrets (pin_code, recipient_token, token_expires_at, token_revoked_at),
             logistics_providers (*),
             vendors (business_name)
           `);
@@ -187,7 +285,6 @@ export const deliveryService = {
       }
     }
 
-    // Offline fallback
     const all = this.getAllDeliveriesSync();
     const normalized = id.trim().toLowerCase();
     return (
@@ -201,24 +298,39 @@ export const deliveryService = {
 
   /**
    * Creates a new delivery record.
-   * In live mode (isSupabaseConfigured = true), invokes the atomic
-   * `create_delivery_transactional` database RPC in a single PostgreSQL transaction.
-   * If any error occurs, throws an explicit exception rather than masking with mock data.
-   * In offline/demo mode, persists to localStorage.
+   * Rejects `prepaid_online` until a verified payment gateway/webhook is integrated,
+   * and enforces `paymentStatus = 'pending'` on all newly created orders.
    */
   async createDelivery(
     data: Omit<DeliveryRecord, 'id' | 'createdAt' | 'updatedAt'>,
     idempotencyKey?: string
   ): Promise<DeliveryRecord> {
+    if (data.paymentMethod === 'prepaid_online') {
+      throw new Error(
+        'Online prepaid payment is unavailable until verified payment gateway integration is enabled.'
+      );
+    }
+
+    if (data.status === 'delivered') {
+      throw new Error('Cannot create a pre-completed delivery.');
+    }
+
+    const paymentMethod: PaymentMethod = data.paymentMethod ?? 'cash_on_delivery';
+    const paymentStatus: PaymentStatus = 'pending';
+    const requirePhotoProof = Boolean(data.requirePhotoProof);
+
     const randomNum = Math.floor(100000 + Math.random() * 900000);
     const trackingCode = `OF-${randomNum}`;
     const now = new Date().toISOString();
 
-    const isAuto = data.dispatchMode === 'auto' || !data.providerId || (isSupabaseConfigured && !isUuid(data.providerId));
-    let initialStatus: DeliveryStatus = data.status || (isAuto ? 'opportunity_sent' : 'awaiting_pickup');
+    const isAuto =
+      data.dispatchMode === 'auto' ||
+      !data.providerId ||
+      (isSupabaseConfigured && !isUuid(data.providerId));
+    let initialStatus: DeliveryStatus =
+      data.status || (isAuto ? 'opportunity_sent' : 'awaiting_pickup');
 
     if (isSupabaseConfigured) {
-      // If no active Supabase session exists, skip live RPC to prevent anon 404 (functions are restricted to authenticated role)
       let isLiveAuthSession = true;
       try {
         if (supabase.auth?.getSession) {
@@ -270,23 +382,32 @@ export const deliveryService = {
           p_pickup_contact_phone: data.pickup.contactPhone || null,
           p_delivery_notes: data.deliveryNote || null,
           p_estimated_delivery_time: data.estimatedDeliveryTime || 'Same Day',
-          p_selected_provider_id: !isAuto && data.providerId && isUuid(data.providerId) ? data.providerId : null,
+          p_selected_provider_id:
+            !isAuto && data.providerId && isUuid(data.providerId) ? data.providerId : null,
           p_candidate_provider_ids: candidateIds.length > 0 ? candidateIds : null,
           p_idempotency_key: idempotencyKey || null,
+          p_payment_method: paymentMethod,
+          p_require_photo_proof: requirePhotoProof,
         });
 
-        // Detect missing function in schema cache (migration 004 pending or session unauthenticated)
         const isSchemaCacheError =
           rpcErr?.code === 'PGRST202' ||
-          Boolean(rpcErr?.message && (rpcErr.message.includes('schema cache') || rpcErr.message.includes('Could not find the function')));
+          Boolean(
+            rpcErr?.message &&
+              (rpcErr.message.includes('schema cache') ||
+                rpcErr.message.includes('Could not find the function'))
+          );
 
         if (isSchemaCacheError) {
           console.warn(
-            'create_delivery_transactional RPC is not available in Supabase schema cache (migration 004 pending or session unauthenticated). Falling back to offline client store.',
+            'create_delivery_transactional RPC is not available in Supabase schema cache. Falling back to offline client store.',
             rpcErr?.message
           );
         } else if (rpcErr || !res || !res.success) {
-          const errorMsg = rpcErr?.message || (res as { error?: string })?.error || 'Database rejected delivery creation';
+          const errorMsg =
+            rpcErr?.message ||
+            (res as { error?: string })?.error ||
+            'Database rejected delivery creation';
           console.error('deliveryService.createDelivery error:', errorMsg);
           throw new Error(errorMsg);
         } else {
@@ -298,12 +419,17 @@ export const deliveryService = {
             providerId: res.provider_id || undefined,
             currentOpportunityProviderId: res.current_opportunity_provider_id || undefined,
             candidateQueue: res.candidate_provider_ids,
-            paymentMethod: data.paymentMethod || 'cash_on_delivery',
-            paymentStatus: data.paymentStatus || (data.paymentMethod === 'prepaid_online' ? 'collected' : 'pending'),
-            podVerificationCode: data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString(),
-            requirePhotoProof: Boolean(data.requirePhotoProof),
+            paymentMethod: (res.payment_method as PaymentMethod | null) ?? paymentMethod,
+            paymentStatus: (res.payment_status as PaymentStatus | null) ?? 'pending',
+            podVerificationCode: res.pod_verification_code || undefined,
+            recipientTrackingToken: res.recipient_tracking_token || undefined,
+            podFailedAttempts: 0,
+            requirePhotoProof:
+              typeof res.require_photo_proof === 'boolean'
+                ? res.require_photo_proof
+                : requirePhotoProof,
             createdAt: res.created_at,
-            updatedAt: res.updated_at,
+            updatedAt: res.updated_at || res.created_at,
           };
 
           realtimeService.notifyMutation('delivery', createdLive);
@@ -327,16 +453,22 @@ export const deliveryService = {
       candidateQueue = candidates.map((c) => c.id);
       if (candidateQueue.length > 0) {
         currentOpportunityProviderId = candidateQueue[0];
-        initialStatus = 'opportunity_sent';
+        initialStatus = data.status === 'in_transit' ? 'in_transit' : 'opportunity_sent';
       } else {
-        initialStatus = 'searching';
+        initialStatus = data.status === 'in_transit' ? 'in_transit' : 'searching';
       }
     }
 
-    const podVerificationCode = data.podVerificationCode || Math.floor(1000 + Math.random() * 9000).toString();
-    const paymentMethod = data.paymentMethod || 'cash_on_delivery';
-    const paymentStatus = data.paymentStatus || (paymentMethod === 'prepaid_online' ? 'collected' : 'pending');
-    const requirePhotoProof = Boolean(data.requirePhotoProof);
+    const podVerificationCode =
+      data.podVerificationCode && POD_PIN_REGEX.test(data.podVerificationCode)
+        ? data.podVerificationCode
+        : generateSecurePodPin();
+    const recipientTrackingToken =
+      data.recipientTrackingToken &&
+      RECIPIENT_TOKEN_REGEX.test(data.recipientTrackingToken.toLowerCase())
+        ? data.recipientTrackingToken.toLowerCase()
+        : generateSecureRecipientToken();
+    const podTokenExpiresAt = new Date(Date.now() + SEVEN_DAYS_MS).toISOString();
 
     const newDelivery: DeliveryRecord = {
       ...data,
@@ -346,9 +478,16 @@ export const deliveryService = {
       paymentMethod,
       paymentStatus,
       podVerificationCode,
+      recipientTrackingToken,
+      podTokenExpiresAt,
+      podTokenRevokedAt: null,
+      podFailedAttempts: 0,
       requirePhotoProof,
+      podPhotoUrl: undefined,
+      podCompletedAt: undefined,
       candidateQueue: data.candidateQueue || candidateQueue,
-      currentOpportunityProviderId: data.currentOpportunityProviderId || currentOpportunityProviderId,
+      currentOpportunityProviderId:
+        data.currentOpportunityProviderId || currentOpportunityProviderId,
       createdAt: now,
       updatedAt: now,
     };
@@ -367,8 +506,6 @@ export const deliveryService = {
 
   /**
    * Retrieves open delivery requests available for logistics providers in their coverage area.
-   * In live mode, invokes `get_marketplace_opportunities` RPC with PII redaction
-   * (hiding customer phone numbers and street addresses until acceptance).
    */
   async getProviderOpportunities(coverageArea?: string, providerId?: string): Promise<DeliveryRecord[]> {
     if (isSupabaseConfigured) {
@@ -431,7 +568,6 @@ export const deliveryService = {
 
     const all = this.getAllDeliveriesSync();
     return all.filter((d) => {
-      // Exclude jobs already accepted by this provider or completed
       if (providerId && (d.providerId === providerId || d.selectedProvider?.id === providerId)) {
         return false;
       }
@@ -452,7 +588,6 @@ export const deliveryService = {
 
   /**
    * Retrieves a targeted dispatch opportunity sent specifically to a provider.
-   * Respects real-time provider availability status (suppressed if busy or offline).
    */
   async getProviderTargetedOpportunity(providerId: string): Promise<DeliveryRecord | null> {
     const dynamicAvail = logisticsService.getDynamicAvailability(providerId);
@@ -534,6 +669,7 @@ export const deliveryService = {
 
   /**
    * Retrieves deliveries assigned to or accepted by a specific provider.
+   * Couriers never receive `delivery_pod_secrets` rows.
    */
   async getProviderAssignedDeliveries(providerId: string): Promise<DeliveryRecord[]> {
     if (isSupabaseConfigured) {
@@ -566,8 +702,6 @@ export const deliveryService = {
 
   /**
    * Accepts a delivery opportunity on behalf of a logistics provider.
-   * Invokes atomic database RPC `accept_delivery_opportunity` with row locking (`FOR UPDATE`)
-   * to eliminate race conditions and double-assignment.
    */
   async acceptDelivery(
     deliveryId: string,
@@ -607,7 +741,6 @@ export const deliveryService = {
       return null;
     }
 
-    // Offline / Demo fallback with double-assignment guard
     const all = this.getAllDeliveriesSync();
     const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
     if (index === -1) return null;
@@ -639,8 +772,8 @@ export const deliveryService = {
             estimatedDeliveryTime: target.estimatedDeliveryTime || 'Same Day',
             vehicleTypes: ['Motorcycle', 'Van'],
             supportedPackageTypes: [target.package.packageType],
-            rating: 4.9,
-            reviewCount: 120,
+            rating: 5.0,
+            reviewCount: 0,
             capacity: 'Standard Fleet',
           },
       updatedAt: new Date().toISOString(),
@@ -688,7 +821,6 @@ export const deliveryService = {
       return false;
     }
 
-    // Offline / Demo fallback
     const all = this.getAllDeliveriesSync();
     const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
     if (index === -1) return false;
@@ -730,8 +862,7 @@ export const deliveryService = {
 
   /**
    * Updates delivery status enforcing the state machine.
-   * In live mode, delegates to `transition_delivery_status` RPC which validates
-   * role authorization and automatically logs a single authoritative audit row.
+   * Rejects `delivered` — deliveries can only complete via `completeDeliveryWithPod`.
    */
   async updateDeliveryStatus(
     deliveryId: string,
@@ -739,6 +870,13 @@ export const deliveryService = {
     _userId?: string,
     notes?: string
   ): Promise<DeliveryRecord | null> {
+    if (status === 'delivered') {
+      console.warn(
+        'deliveryService.updateDeliveryStatus rejected: use completeDeliveryWithPod to complete handover.'
+      );
+      return null;
+    }
+
     if (isSupabaseConfigured) {
       if (isUuid(deliveryId)) {
         try {
@@ -773,15 +911,22 @@ export const deliveryService = {
       return null;
     }
 
-    // Offline / Demo fallback
     const all = this.getAllDeliveriesSync();
     const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
     if (index === -1) return null;
 
+    const current = all[index];
+    if (current.status === 'delivered' || current.status === 'cancelled') {
+      return null;
+    }
+
+    const now = new Date().toISOString();
     const updatedRecord: DeliveryRecord = {
-      ...all[index],
+      ...current,
       status,
-      updatedAt: new Date().toISOString(),
+      podTokenRevokedAt:
+        status === 'cancelled' ? current.podTokenRevokedAt || now : current.podTokenRevokedAt,
+      updatedAt: now,
     };
 
     all[index] = updatedRecord;
@@ -796,59 +941,171 @@ export const deliveryService = {
   },
 
   /**
-   * Completes a delivery with Proof of Delivery (POD) verification.
-   * Validates the 4-digit recipient PIN and checks photo requirement.
+   * Completes a delivery with server-verified Proof of Delivery (POD).
+   * - Never accepts hardcoded bypass codes (such as '0000').
+   * - In live mode, delegates atomically to `complete_delivery_with_pod` RPC
+   *   so couriers never read `delivery_pod_secrets` and failed attempts are
+   *   counted server-side (5-attempt lockout).
    */
   async completeDeliveryWithPod(
     deliveryId: string,
     verificationCode: string,
     photoUrl?: string,
     notes?: string
-  ): Promise<{ success: boolean; error?: string; delivery?: DeliveryRecord }> {
-    const delivery = await this.getDeliveryById(deliveryId);
-    if (!delivery) {
-      return { success: false, error: 'Delivery record not found.' };
+  ): Promise<{
+    success: boolean;
+    code?: string;
+    attemptsRemaining?: number;
+    error?: string;
+    delivery?: DeliveryRecord;
+  }> {
+    const cleanInputCode = (verificationCode || '').trim();
+    const cleanPhotoUrl = photoUrl?.trim() ? photoUrl.trim() : undefined;
+
+    if (isSupabaseConfigured) {
+      if (!isUuid(deliveryId)) {
+        return { success: false, error: 'Invalid delivery identifier.' };
+      }
+
+      try {
+        const { data: res, error } = await supabase.rpc('complete_delivery_with_pod', {
+          p_delivery_id: deliveryId,
+          p_verification_code: cleanInputCode,
+          p_photo_url: cleanPhotoUrl ?? null,
+          p_notes: notes || null,
+        });
+
+        if (error) {
+          console.error('deliveryService.completeDeliveryWithPod RPC error:', error.message);
+          return {
+            success: false,
+            error: error.message || 'Failed to verify Proof of Delivery.',
+          };
+        }
+
+        if (!res || !res.success) {
+          return {
+            success: false,
+            code: res?.code,
+            attemptsRemaining: res?.attempts_remaining,
+            error:
+              res?.error ||
+              'Invalid 4-digit verification code. Please request the code from the recipient.',
+          };
+        }
+
+        const refreshed = await this.getDeliveryById(deliveryId);
+        if (refreshed) {
+          realtimeService.notifyMutation('delivery', refreshed);
+          return { success: true, delivery: refreshed };
+        }
+
+        return { success: true };
+      } catch (err: any) {
+        console.error('deliveryService.completeDeliveryWithPod exception:', err?.message || err);
+        return {
+          success: false,
+          error: err?.message || 'Failed to verify Proof of Delivery.',
+        };
+      }
     }
 
-    // Check PIN: if delivery has a podVerificationCode, verify it matches
-    const expectedCode = delivery.podVerificationCode;
-    const cleanInputCode = verificationCode.trim();
-    if (expectedCode && cleanInputCode !== expectedCode && cleanInputCode !== '0000') {
-      return { success: false, error: 'Invalid 4-digit verification code. Please request the code from the recipient.' };
+    // Offline / Demo fallback — enforces identical validation, lockout, and COD rules
+    const all = this.getAllDeliveriesSync();
+    const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
+    if (index === -1) {
+      return { success: false, code: 'not_found', error: 'Delivery record not found.' };
     }
 
-    // Check photo requirement
-    if (delivery.requirePhotoProof && !photoUrl) {
-      return { success: false, error: 'Vendor has required photo proof of delivery. Please snap or upload a handover photo.' };
+    const target = all[index];
+
+    if (target.status === 'delivered') {
+      return {
+        success: false,
+        code: 'already_delivered',
+        error: 'Delivery has already been marked as delivered.',
+      };
+    }
+
+    if (target.status !== 'in_transit') {
+      return {
+        success: false,
+        code: 'invalid_transition',
+        error: `Delivery must be in_transit before completing handover (current status: ${target.status}).`,
+      };
+    }
+
+    const currentAttempts = target.podFailedAttempts ?? 0;
+    if (currentAttempts >= MAX_POD_FAILED_ATTEMPTS) {
+      return {
+        success: false,
+        code: 'too_many_attempts',
+        attemptsRemaining: 0,
+        error: 'Too many failed PIN attempts. Ask the vendor to rotate the handover PIN.',
+      };
+    }
+
+    if (
+      !POD_PIN_REGEX.test(cleanInputCode) ||
+      !target.podVerificationCode ||
+      !timingSafeEqualString(target.podVerificationCode, cleanInputCode)
+    ) {
+      const nextAttempts = currentAttempts + 1;
+      all[index] = {
+        ...target,
+        podFailedAttempts: nextAttempts,
+        updatedAt: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      } catch {
+        // storage error
+      }
+
+      const lockedOut = nextAttempts >= MAX_POD_FAILED_ATTEMPTS;
+      return {
+        success: false,
+        code: lockedOut ? 'too_many_attempts' : 'invalid_pin',
+        attemptsRemaining: Math.max(0, MAX_POD_FAILED_ATTEMPTS - nextAttempts),
+        error: lockedOut
+          ? 'Too many failed PIN attempts. Ask the vendor to rotate the handover PIN.'
+          : 'Invalid 4-digit verification code. Please request the code from the recipient.',
+      };
+    }
+
+    if (target.requirePhotoProof && !cleanPhotoUrl) {
+      return {
+        success: false,
+        code: 'photo_required',
+        error:
+          'Vendor has required photo proof of delivery. Please capture or upload a handover photo.',
+      };
+    }
+
+    if (cleanPhotoUrl) {
+      if (
+        cleanPhotoUrl.length > MAX_POD_PHOTO_BYTES ||
+        !POD_PHOTO_URL_REGEX.test(cleanPhotoUrl)
+      ) {
+        return {
+          success: false,
+          code: 'invalid_photo_url',
+          error: 'Invalid or oversized proof-of-delivery photo.',
+        };
+      }
     }
 
     const podCompletedAt = new Date().toISOString();
-
-    if (isSupabaseConfigured) {
-      const updated = await this.updateDeliveryStatus(deliveryId, 'delivered', undefined, notes || 'Verified with Proof of Delivery');
-      if (updated) {
-        const enriched: DeliveryRecord = {
-          ...updated,
-          podPhotoUrl: photoUrl || updated.podPhotoUrl,
-          podCompletedAt,
-          paymentStatus: updated.paymentMethod === 'cash_on_delivery' ? 'collected' : updated.paymentStatus,
-        };
-        realtimeService.notifyMutation('delivery', enriched);
-        return { success: true, delivery: enriched };
-      }
-      return { success: false, error: 'Failed to transition delivery status to delivered in database.' };
-    }
-
-    // Offline / Demo fallback
-    const all = this.getAllDeliveriesSync();
-    const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
-    if (index === -1) return { success: false, error: 'Delivery not found in local records.' };
+    const nextPaymentStatus: PaymentStatus | undefined =
+      target.paymentMethod === 'cash_on_delivery' && target.paymentStatus === 'pending'
+        ? 'collected'
+        : target.paymentStatus;
 
     const updatedRecord: DeliveryRecord = {
-      ...all[index],
+      ...target,
       status: 'delivered',
-      paymentStatus: all[index].paymentMethod === 'cash_on_delivery' ? 'collected' : all[index].paymentStatus,
-      podPhotoUrl: photoUrl || all[index].podPhotoUrl,
+      paymentStatus: nextPaymentStatus,
+      podPhotoUrl: cleanPhotoUrl,
       podCompletedAt,
       updatedAt: podCompletedAt,
     };
@@ -865,18 +1122,124 @@ export const deliveryService = {
   },
 
   /**
-   * Secure, privacy-safe public tracking function.
-   * Invokes `get_public_tracking` RPC in Supabase, returning only public fields
-   * (never exposing recipient phone numbers, street addresses, or private internal rates).
+   * Rotates the 4-digit recipient handover PIN and 64-hex tracking capability
+   * token (revoking any previous recipient link) and resets failed PIN attempts.
    */
-  async getPublicTracking(trackingCode: string): Promise<PublicTrackingInfo | null> {
+  async rotateDeliveryPodSecrets(deliveryId: string): Promise<{
+    success: boolean;
+    error?: string;
+    podVerificationCode?: string;
+    recipientTrackingToken?: string;
+    tokenExpiresAt?: string;
+  }> {
+    if (isSupabaseConfigured) {
+      if (!isUuid(deliveryId)) {
+        return { success: false, error: 'Invalid delivery identifier.' };
+      }
+
+      try {
+        const { data: res, error } = await supabase.rpc('rotate_delivery_pod_secrets', {
+          p_delivery_id: deliveryId,
+        });
+
+        if (error) {
+          console.error('deliveryService.rotateDeliveryPodSecrets error:', error.message);
+          return { success: false, error: error.message || 'Failed to rotate handover PIN.' };
+        }
+
+        if (!res || !res.success) {
+          return {
+            success: false,
+            error: res?.error || 'Unable to rotate handover PIN for this delivery.',
+          };
+        }
+
+        const refreshed = await this.getDeliveryById(deliveryId);
+        if (refreshed) {
+          realtimeService.notifyMutation('delivery', refreshed);
+        }
+
+        return {
+          success: true,
+          podVerificationCode: res.pod_verification_code,
+          recipientTrackingToken: res.recipient_tracking_token,
+          tokenExpiresAt: res.token_expires_at,
+        };
+      } catch (err: any) {
+        console.error('deliveryService.rotateDeliveryPodSecrets exception:', err?.message || err);
+        return { success: false, error: err?.message || 'Failed to rotate handover PIN.' };
+      }
+    }
+
+    const all = this.getAllDeliveriesSync();
+    const index = all.findIndex((d) => d.id === deliveryId || d.trackingCode === deliveryId);
+    if (index === -1) {
+      return { success: false, error: 'Delivery not found.' };
+    }
+
+    const target = all[index];
+    if (target.status === 'delivered' || target.status === 'cancelled') {
+      return {
+        success: false,
+        error: 'Cannot rotate handover secrets for a delivered or cancelled order.',
+      };
+    }
+
+    const newPin = generateSecurePodPin();
+    const newToken = generateSecureRecipientToken();
+    const expiresAt = new Date(Date.now() + SEVEN_DAYS_MS).toISOString();
+
+    const updatedRecord: DeliveryRecord = {
+      ...target,
+      podVerificationCode: newPin,
+      recipientTrackingToken: newToken,
+      podTokenExpiresAt: expiresAt,
+      podTokenRevokedAt: null,
+      podFailedAttempts: 0,
+      updatedAt: new Date().toISOString(),
+    };
+
+    all[index] = updatedRecord;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch {
+      // storage error
+    }
+
+    realtimeService.notifyMutation('delivery', updatedRecord);
+    return {
+      success: true,
+      podVerificationCode: newPin,
+      recipientTrackingToken: newToken,
+      tokenExpiresAt: expiresAt,
+    };
+  },
+
+  /**
+   * Secure, privacy-safe public tracking function implementing Case A / B / C
+   * disclosure rules:
+   * - Case A (no recipientToken): returns ONLY non-sensitive milestone metadata;
+   *   all payment, COD amount, PIN, and POD photo fields are `null`.
+   * - Case B (valid, unexpired, non-revoked 64-hex recipientToken): returns
+   *   recipient payment summary, active handover PIN (extinguished immediately
+   *   upon `delivered` or `cancelled`), and POD photo only once `delivered`.
+   * - Case C (invalid, expired, or revoked token): identical disclosure to Case A
+   *   (`recipientAccessGranted: false`, all sensitive fields `null`).
+   */
+  async getPublicTracking(
+    trackingCode: string,
+    recipientToken?: string | null
+  ): Promise<PublicTrackingInfo | null> {
     const cleanCode = trackingCode.trim();
     if (!cleanCode) return null;
+
+    const normalizedToken = recipientToken?.trim().toLowerCase() || null;
 
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.rpc('get_public_tracking', {
           p_tracking_code: cleanCode,
+          p_recipient_token: normalizedToken,
         });
 
         if (!error && data && data.length > 0) {
@@ -891,6 +1254,14 @@ export const deliveryService = {
             vendorName: row.vendor_name,
             providerName: row.provider_name,
             providerLogoUrl: row.provider_logo_url,
+            recipientAccessGranted: Boolean(row.recipient_access_granted),
+            paymentMethod: row.payment_method ?? null,
+            paymentStatus: row.payment_status ?? null,
+            amountDue: row.amount_due ?? null,
+            requirePhotoProof: row.require_photo_proof ?? null,
+            hasPhotoProof: row.has_photo_proof ?? null,
+            podPhotoUrl: row.pod_photo_url ?? null,
+            podVerificationCode: row.pod_verification_code ?? null,
           };
         }
       } catch (err) {
@@ -898,7 +1269,7 @@ export const deliveryService = {
       }
     }
 
-    // Offline / Demo fallback: sanitize mock delivery record
+    // Offline / Demo fallback — strictly enforces Case A / B / C disclosure rules
     const all = this.getAllDeliveriesSync();
     const target = all.find(
       (d) =>
@@ -907,6 +1278,23 @@ export const deliveryService = {
     );
 
     if (!target) return null;
+
+    const storedToken = target.recipientTrackingToken?.trim().toLowerCase() || null;
+    const isTokenFormatValid = Boolean(
+      normalizedToken && RECIPIENT_TOKEN_REGEX.test(normalizedToken)
+    );
+    const isNotRevoked = !target.podTokenRevokedAt;
+    const isNotExpired =
+      !target.podTokenExpiresAt || new Date(target.podTokenExpiresAt).getTime() > Date.now();
+    const isAuthorized = Boolean(
+      isTokenFormatValid &&
+        storedToken &&
+        normalizedToken &&
+        timingSafeEqualString(storedToken, normalizedToken) &&
+        isNotRevoked &&
+        isNotExpired &&
+        target.status !== 'cancelled'
+    );
 
     return {
       trackingCode: target.trackingCode || target.id,
@@ -918,13 +1306,24 @@ export const deliveryService = {
       vendorName: target.vendorName,
       providerName: target.selectedProvider?.name || null,
       providerLogoUrl: target.selectedProvider?.logoUrl || null,
-      paymentMethod: target.paymentMethod,
-      paymentStatus: target.paymentStatus,
-      amountDue: target.paymentMethod === 'cash_on_delivery' ? target.estimatedPrice : undefined,
-      podVerificationCode: target.podVerificationCode || null,
-      requirePhotoProof: target.requirePhotoProof,
-      hasPhotoProof: Boolean(target.podPhotoUrl),
-      podPhotoUrl: target.podPhotoUrl || null,
+      recipientAccessGranted: isAuthorized,
+      paymentMethod: isAuthorized ? (target.paymentMethod ?? null) : null,
+      paymentStatus: isAuthorized ? (target.paymentStatus ?? null) : null,
+      amountDue:
+        isAuthorized &&
+        target.paymentMethod === 'cash_on_delivery' &&
+        target.paymentStatus === 'pending' &&
+        target.status !== 'delivered'
+          ? target.estimatedPrice
+          : null,
+      requirePhotoProof: isAuthorized ? Boolean(target.requirePhotoProof) : null,
+      hasPhotoProof: isAuthorized ? Boolean(target.podPhotoUrl) : null,
+      podPhotoUrl:
+        isAuthorized && target.status === 'delivered' ? (target.podPhotoUrl ?? null) : null,
+      podVerificationCode:
+        isAuthorized && target.status !== 'delivered' && target.status !== 'cancelled'
+          ? (target.podVerificationCode ?? null)
+          : null,
     };
   },
 

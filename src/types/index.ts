@@ -108,8 +108,8 @@ export interface LogisticsProvider {
 // Payment & Proof of Delivery (POD) Models
 // ---------------------------------------------------------------------------
 
-export type PaymentMethod = 'cash_on_delivery' | 'pay_at_pickup' | 'prepaid_online';
-export type PaymentStatus = 'pending' | 'collected' | 'remitted';
+export type PaymentMethod = Enums<'payment_method_enum'>;
+export type PaymentStatus = Enums<'payment_status_enum'>;
 
 export interface ProofOfDeliveryDetails {
   verificationCode: string;
@@ -152,6 +152,10 @@ export interface DeliveryRecord {
   paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   podVerificationCode?: string;
+  recipientTrackingToken?: string | null;
+  podTokenExpiresAt?: string | null;
+  podTokenRevokedAt?: string | null;
+  podFailedAttempts?: number;
   requirePhotoProof?: boolean;
   podPhotoUrl?: string;
   podCompletedAt?: string;
@@ -165,6 +169,8 @@ export interface DeliveryRequest extends DeliveryRecord {}
 /**
  * Public, privacy-safe tracking information exposed to unauthenticated visitors.
  * Strictly excludes customer phone numbers, street addresses, and internal pricing.
+ * Sensitive handover/payment fields are populated ONLY when a valid, unexpired,
+ * non-revoked recipient capability token is presented (Case B).
  */
 export interface PublicTrackingInfo {
   trackingCode: string;
@@ -176,12 +182,13 @@ export interface PublicTrackingInfo {
   vendorName: string;
   providerName: string | null;
   providerLogoUrl: string | null;
-  paymentMethod?: PaymentMethod;
-  paymentStatus?: PaymentStatus;
-  amountDue?: number;
+  recipientAccessGranted?: boolean;
+  paymentMethod?: PaymentMethod | null;
+  paymentStatus?: PaymentStatus | null;
+  amountDue?: number | null;
   podVerificationCode?: string | null;
-  requirePhotoProof?: boolean;
-  hasPhotoProof?: boolean;
+  requirePhotoProof?: boolean | null;
+  hasPhotoProof?: boolean | null;
   podPhotoUrl?: string | null;
 }
 
