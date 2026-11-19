@@ -41,6 +41,7 @@ const CustomerTrackingPage = lazy(() => import('./pages/CustomerTrackingPage').t
 const TermsPage = lazy(() => import('./pages/TermsPage').then(m => ({ default: m.TermsPage })));
 const PrivacyPage = lazy(() => import('./pages/PrivacyPage').then(m => ({ default: m.PrivacyPage })));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage').then(m => ({ default: m.NotFoundPage })));
+const RiderHunterPage = lazy(() => import('./pages/RiderHunterPage').then(m => ({ default: m.RiderHunterPage })));
 
 import { ProtectedRoute, PublicOnlyRoute } from './components/auth/ProtectedRoute';
 
@@ -169,6 +170,16 @@ export function App() {
                 element={<Navigate to="/logistics/dashboard" replace />}
               />
             </Route>
+
+            {/* Rider Hunter — separate staff workspace */}
+            <Route
+              path="/rider-hunter"
+              element={
+                <ProtectedRoute>
+                  <RiderHunterPage />
+                </ProtectedRoute>
+              }
+            />
 
             {/* Fallback & 404 */}
             <Route path="/404" element={<NotFoundPage />} />
