@@ -1,0 +1,60 @@
+name: OrderFlow Rider Hunter Phase 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/feature/orderflow-rider-hunter-phase-2-db'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Apply Rider Hunter migration
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+
+          schema_exists=$(psql "$SUPABASE_DB_URL" -X -A -t \
+            -c "SELECT to_regnamespace('rh_private') IS NOT NULL;")
+
+          table_count=$(psql "$SUPABASE_DB_URL" -X -A -t \
+            -c "SELECT count(*) FROM pg_tables
+            WHERE schemaname = 'public'
+            AND tablename IN (
+              'rh_staff_members','rh_campaigns','rh_leads',
+              'rh_lead_sources','rh_discovery_runs',
+              'rh_contact_preferences','rh_consent_events',
+              'rh_message_drafts','rh_approvals','rh_activity_logs'
+            );")
+
+          if [ "$schema_exists" = "f" ] && [ "$table_count" = "0" ]; then
+            psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 \
+              -f supabase/migrations/20261119163000_rider_hunter_foundation.sql
+          elif [ "$schema_exists" = "t" ] && [ "$table_count" = "10" ]; then
+            echo "Migration objects already exist; skipping SQL."
+          else
+            echo "Unexpected database state. Stopping safely."
+            exit 1
+          fi
+
+          supabase migration repair 20261119163000 \
+            --status applied \
+            --remote="$SUPABASE_DB_URL" \
+            --yes
