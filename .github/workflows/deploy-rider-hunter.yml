@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - feature/orderflow-rider-hunter-phase-4-agents
-    paths:
-      - supabase/functions/rider-hunter-discover/**
 
   workflow_dispatch:
 
