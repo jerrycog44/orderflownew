@@ -45,7 +45,9 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const [copiedPin, setCopiedPin] = useState(false);
   const [isRotatingPod, setIsRotatingPod] = useState(false);
   const [rotateError, setRotateError] = useState<string | null>(null);
+  const [rotateSuccess, setRotateSuccess] = useState<string | null>(null);
   const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const handleCopyPublicLink = async () => {
     if (!delivery) return;
@@ -89,6 +91,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
     if (!delivery || isRotatingPod) return;
     setIsRotatingPod(true);
     setRotateError(null);
+    setRotateSuccess(null);
     try {
       const res = await deliveryService.rotateDeliveryPodSecrets(delivery.id);
       if (!res.success) {
@@ -105,6 +108,10 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                 podFailedAttempts: 0,
               }
             : prev
+        );
+        setNowMs(Date.now());
+        setRotateSuccess(
+          'New PIN and recipient link generated. Previous recipient links were revoked — share the updated PIN or link with the recipient.'
         );
       }
     } catch (err) {
@@ -243,6 +250,12 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const currentStepIdx = getStepStatusIndex(delivery.status);
   const isTerminal = delivery.status === 'delivered' || delivery.status === 'cancelled';
   const hasRecordedPayment = Boolean(delivery.paymentMethod && delivery.paymentStatus);
+  const isRecipientTokenExpired = Boolean(
+    !isTerminal &&
+      delivery.podTokenExpiresAt &&
+      !Number.isNaN(new Date(delivery.podTokenExpiresAt).getTime()) &&
+      new Date(delivery.podTokenExpiresAt).getTime() <= nowMs
+  );
 
   return (
     <div className="of-delivery-detail-page">
@@ -374,7 +387,8 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                 trackingCode: delivery.trackingCode || delivery.id,
                 vendorName: delivery.vendorName,
                 estimatedDeliveryTime: delivery.estimatedDeliveryTime,
-                podVerificationCode: delivery.podVerificationCode,
+                podVerificationCode: isTerminal ? undefined : delivery.podVerificationCode,
+                recipientTrackingToken: isTerminal ? undefined : delivery.recipientTrackingToken,
               })
             )}
             target="_blank"
@@ -665,6 +679,36 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                   }}
                 >
                   Handover PIN is locked after 5 failed attempts. Click &ldquo;Rotate PIN / Revoke Link&rdquo; and share the new PIN with the recipient.
+                </p>
+              )}
+
+              {isRecipientTokenExpired && (
+                <p
+                  role="alert"
+                  data-testid="pod-token-expired-alert"
+                  style={{
+                    margin: '6px 0 0 0',
+                    fontSize: 'var(--font-size-xs)',
+                    color: '#D97706',
+                    fontWeight: 600,
+                  }}
+                >
+                  The recipient tracking link has expired (7-day window). Click &ldquo;Rotate PIN / Revoke Link&rdquo; to issue a fresh PIN and link.
+                </p>
+              )}
+
+              {rotateSuccess && (
+                <p
+                  role="status"
+                  data-testid="pod-rotate-success-notice"
+                  style={{
+                    margin: '6px 0 0 0',
+                    fontSize: 'var(--font-size-xs)',
+                    color: '#059669',
+                    fontWeight: 600,
+                  }}
+                >
+                  {rotateSuccess}
                 </p>
               )}
 

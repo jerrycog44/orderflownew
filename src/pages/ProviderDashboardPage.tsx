@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { deliveryService } from '../services/deliveryService';
 import { logisticsService } from '../services/logisticsService';
+import { preparePodPhotoDataUrl } from '../lib/podPhoto';
 import { useToast } from '../components/ui/Toast';
 import {
   MobileHeader,
@@ -63,6 +64,8 @@ export const ProviderDashboardPage: React.FC = () => {
   const [podPhoto, setPodPhoto] = useState<string | undefined>(undefined);
   const [podError, setPodError] = useState<string | null>(null);
   const [isVerifyingPod, setIsVerifyingPod] = useState(false);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [isPodLocked, setIsPodLocked] = useState(false);
 
   // Profile Drawer state
   const [profileSheetOpen, setProfileSheetOpen] = useState(false);
@@ -231,23 +234,32 @@ export const ProviderDashboardPage: React.FC = () => {
     setPodPin('');
     setPodPhoto(undefined);
     setPodError(null);
+    setIsPodLocked((job.podFailedAttempts ?? 0) >= 5);
   };
 
-  const handlePodPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePodPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setPodPhoto(reader.result);
-        setPodError(null);
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsProcessingPhoto(true);
+    setPodError(null);
+    try {
+      const dataUrl = await preparePodPhotoDataUrl(file);
+      setPodPhoto(dataUrl);
+    } catch (err) {
+      setPodPhoto(undefined);
+      setPodError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to process handover photo. Please choose a smaller JPEG, PNG, or WebP image.'
+      );
+      e.target.value = '';
+    } finally {
+      setIsProcessingPhoto(false);
+    }
   };
 
   const handleConfirmPodDelivery = async () => {
-    if (!podModalJob) return;
+    if (!podModalJob || isPodLocked || isProcessingPhoto) return;
     if (!podPin.trim()) {
       setPodError('Please enter the 4-digit verification code provided by the customer.');
       return;
@@ -278,9 +290,19 @@ export const ProviderDashboardPage: React.FC = () => {
         setPodModalJob(null);
         setPodPin('');
         setPodPhoto(undefined);
+        setIsPodLocked(false);
         setRefreshTrigger((prev) => prev + 1);
       } else {
-        setPodError(res.error || 'Failed to verify Proof of Delivery.');
+        const lockedNow = res.code === 'too_many_attempts' || res.attemptsRemaining === 0;
+        if (lockedNow) {
+          setIsPodLocked(true);
+        }
+        const baseError = res.error || 'Failed to verify Proof of Delivery.';
+        const attemptsHint =
+          !lockedNow && typeof res.attemptsRemaining === 'number' && res.attemptsRemaining > 0
+            ? ` (${res.attemptsRemaining} ${res.attemptsRemaining === 1 ? 'attempt' : 'attempts'} remaining.)`
+            : '';
+        setPodError(`${baseError}${attemptsHint}`);
       }
     } catch (err) {
       console.error('Error completing delivery with POD:', err);
@@ -791,10 +813,10 @@ export const ProviderDashboardPage: React.FC = () => {
 
                     {/* Operational Action Buttons */}
                     <div className="of-rider-action-row">
-                      {job.status !== 'in_transit' && (
+                      {job.status !== 'in_transit' ? (
                         <button
                           type="button"
-                          className="of-targeted-btn decline"
+                          className="of-targeted-btn accept"
                           style={{ minHeight: '40px', padding: '0 14px' }}
                           onClick={() => handleUpdateStatus(job.id, 'in_transit')}
                           data-testid={`mark-in-transit-btn-${job.id}`}
@@ -802,18 +824,18 @@ export const ProviderDashboardPage: React.FC = () => {
                           <Truck size={14} />
                           <span>Start Trip</span>
                         </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="of-targeted-btn accept"
+                          style={{ minHeight: '40px', padding: '0 16px' }}
+                          onClick={() => handleInitiateDeliveryCompletion(job)}
+                          data-testid={`complete-delivery-btn-${job.id}`}
+                        >
+                          <CheckCircle2 size={14} />
+                          <span>Confirm Handover (POD)</span>
+                        </button>
                       )}
-
-                      <button
-                        type="button"
-                        className="of-targeted-btn accept"
-                        style={{ minHeight: '40px', padding: '0 16px' }}
-                        onClick={() => handleInitiateDeliveryCompletion(job)}
-                        data-testid={`complete-delivery-btn-${job.id}`}
-                      >
-                        <CheckCircle2 size={14} />
-                        <span>Confirm Handover (POD)</span>
-                      </button>
                     </div>
                   </article>
                 ))}
@@ -947,11 +969,12 @@ export const ProviderDashboardPage: React.FC = () => {
       <BottomSheet
         isOpen={Boolean(podModalJob)}
         onClose={() => {
-          if (!isVerifyingPod) {
+          if (!isVerifyingPod && !isProcessingPhoto) {
             setPodModalJob(null);
             setPodPin('');
             setPodPhoto(undefined);
             setPodError(null);
+            setIsPodLocked(false);
           }
         }}
         title={`Handover Verification — ${podModalJob?.trackingCode || podModalJob?.id}`}
@@ -990,6 +1013,20 @@ export const ProviderDashboardPage: React.FC = () => {
               </div>
             )}
 
+            {isPodLocked && (
+              <div
+                className="of-merchant-error-banner"
+                style={{ padding: '10px' }}
+                role="alert"
+                data-testid="rider-pod-lockout-alert"
+              >
+                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: 'var(--m-text-xs)' }}>
+                  Handover PIN is locked after 5 failed attempts. Ask the vendor to rotate the handover PIN and share the new 4-digit code.
+                </span>
+              </div>
+            )}
+
             {/* 4-digit PIN input */}
             <div>
               <label htmlFor="pod-pin-input" style={{ display: 'block', fontSize: 'var(--m-text-xs)', fontWeight: 700, color: 'var(--m-color-text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
@@ -1001,6 +1038,7 @@ export const ProviderDashboardPage: React.FC = () => {
                 maxLength={4}
                 placeholder="4-digit PIN (e.g. 4892)"
                 value={podPin}
+                disabled={isPodLocked}
                 onChange={(e) => {
                   setPodPin(e.target.value.replace(/\D/g, ''));
                   setPodError(null);
@@ -1039,13 +1077,14 @@ export const ProviderDashboardPage: React.FC = () => {
                 <label className="of-pod-photo-zone">
                   <Upload size={22} color="var(--m-color-text-muted)" />
                   <span style={{ fontSize: 'var(--m-text-xs)', color: 'var(--m-color-text-secondary)', fontWeight: 500 }}>
-                    Tap to snap handover photo or upload file
+                    {isProcessingPhoto ? 'Optimizing handover photo...' : 'Tap to snap handover photo or upload file'}
                   </span>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/*"
                     capture="environment"
                     style={{ display: 'none' }}
+                    disabled={isPodLocked || isProcessingPhoto}
                     onChange={handlePodPhotoUpload}
                     data-testid="input-pod-photo"
                   />
@@ -1066,11 +1105,17 @@ export const ProviderDashboardPage: React.FC = () => {
               className="of-targeted-btn accept"
               style={{ width: '100%', minHeight: '48px', marginTop: '6px' }}
               onClick={handleConfirmPodDelivery}
-              disabled={isVerifyingPod}
+              disabled={isVerifyingPod || isProcessingPhoto || isPodLocked}
               data-testid="pod-verify-submit-btn"
             >
               <ShieldCheck size={18} />
-              <span>{isVerifyingPod ? 'Verifying...' : 'Verify & Complete Delivery'}</span>
+              <span>
+                {isPodLocked
+                  ? 'PIN Locked — Rotate with Vendor'
+                  : isVerifyingPod
+                  ? 'Verifying...'
+                  : 'Verify & Complete Delivery'}
+              </span>
             </button>
           </div>
         )}

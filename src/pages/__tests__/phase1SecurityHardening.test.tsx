@@ -200,6 +200,12 @@ describe('Phase 1 Frontend Security & Data-Integrity Hardening', () => {
         expect.stringContaining(`/track/OF-849201#pin_token=${VALID_TOKEN}`)
       );
     });
+
+    const whatsappLink = screen.getByRole('link', { name: /share tracking & pin on whatsapp/i });
+    expect(whatsappLink).toHaveAttribute(
+      'href',
+      expect.stringContaining(encodeURIComponent(`/track/OF-849201#pin_token=${VALID_TOKEN}`))
+    );
   });
 
   it('CustomerTrackingPage immediately scrubs #pin_token from URL bar, persists token in sessionStorage, and copies clean URL on Share Link', async () => {
@@ -321,6 +327,7 @@ describe('Phase 1 Frontend Security & Data-Integrity Hardening', () => {
       paymentStatus: undefined,
       podVerificationCode: '7361',
       recipientTrackingToken: VALID_TOKEN,
+      podTokenExpiresAt: '2020-01-01T00:00:00Z',
       podFailedAttempts: 5,
       requirePhotoProof: true,
       podPhotoUrl:
@@ -334,7 +341,7 @@ describe('Phase 1 Frontend Security & Data-Integrity Hardening', () => {
       success: true,
       podVerificationCode: '9182',
       recipientTrackingToken: 'b'.repeat(64),
-      tokenExpiresAt: '2026-11-08T00:00:00Z',
+      tokenExpiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     });
     const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
 
@@ -354,19 +361,22 @@ describe('Phase 1 Frontend Security & Data-Integrity Hardening', () => {
     expect(screen.queryByText(/Prepaid Online/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Pending Collection/i)).not.toBeInTheDocument();
 
-    // 5-attempt lockout warning is displayed
+    // 5-attempt lockout warning and expired-token notice are displayed
     expect(screen.getByTestId('pod-lockout-alert')).toBeInTheDocument();
+    expect(screen.getByTestId('pod-token-expired-alert')).toBeInTheDocument();
 
     // Clicking POD photo thumbnail opens inline lightbox modal instead of window.open
     fireEvent.click(screen.getByTestId('vendor-pod-photo-thumbnail'));
     expect(windowOpenSpy).not.toHaveBeenCalled();
     expect(screen.getByTestId('pod-photo-lightbox')).toBeInTheDocument();
 
-    // Rotate PIN button calls rotateDeliveryPodSecrets
+    // Rotate PIN button calls rotateDeliveryPodSecrets and displays confirmation
     fireEvent.click(screen.getByTestId('rotate-pod-secrets-btn'));
     await waitFor(() => {
       expect(rotateSpy).toHaveBeenCalledWith('del-legacy-99');
+      expect(screen.getByTestId('pod-rotate-success-notice')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('pod-token-expired-alert')).not.toBeInTheDocument();
   });
 
   it('ProviderDashboardPage displays Settlement: Confirm with Vendor for legacy orders without recorded paymentMethod', async () => {

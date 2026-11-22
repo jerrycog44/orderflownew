@@ -433,6 +433,10 @@ describe('Provider & Rider Mobile Experience (Phase 5)', () => {
 
     fireEvent.change(fileInput, { target: { files: [dummyFile] } });
 
+    await waitFor(() => {
+      expect(screen.getByAltText('Handover proof')).toBeInTheDocument();
+    });
+
     // Now submit verified handover
     fireEvent.click(screen.getByTestId('pod-verify-submit-btn'));
 
@@ -494,5 +498,78 @@ describe('Provider & Rider Mobile Experience (Phase 5)', () => {
     });
     fireEvent.click(screen.getByTestId('rider-sign-out-btn'));
     expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('gates POD completion behind Start Trip until in_transit and surfaces PIN attempts + lockout state', async () => {
+    const preTransitJob: DeliveryRecord = {
+      ...sampleAssignedDeliveries[0],
+      id: 'assigned-awaiting-01',
+      trackingCode: 'OF-WAIT-01',
+      status: 'awaiting_pickup',
+      requirePhotoProof: false,
+    };
+
+    const nearLockJob: DeliveryRecord = {
+      ...sampleAssignedDeliveries[0],
+      id: 'assigned-lock-01',
+      trackingCode: 'OF-LOCK-01',
+      status: 'in_transit',
+      requirePhotoProof: false,
+      podFailedAttempts: 4,
+    };
+
+    vi.mocked(deliveryService.getProviderAssignedDeliveries).mockResolvedValue([
+      preTransitJob,
+      nearLockJob,
+    ]);
+    vi.mocked(deliveryService.completeDeliveryWithPod)
+      .mockResolvedValueOnce({
+        success: false,
+        code: 'invalid_pin',
+        attemptsRemaining: 1,
+        error: 'Invalid 4-digit verification code.',
+      })
+      .mockResolvedValueOnce({
+        success: false,
+        code: 'too_many_attempts',
+        attemptsRemaining: 0,
+        error: 'Too many failed PIN attempts. Ask the vendor to rotate the handover PIN.',
+      });
+
+    render(
+      <MemoryRouter>
+        <ProviderDashboardPage />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('filter-pill-active')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('filter-pill-active'));
+
+    // Pre-transit job shows Start Trip and hides POD completion until in_transit
+    await waitFor(() => {
+      expect(screen.getByTestId('mark-in-transit-btn-assigned-awaiting-01')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('complete-delivery-btn-assigned-awaiting-01')).not.toBeInTheDocument();
+
+    // Open POD modal on in_transit job and test remaining attempts -> lockout transition
+    fireEvent.click(screen.getByTestId('complete-delivery-btn-assigned-lock-01'));
+    await waitFor(() => {
+      expect(screen.getByTestId('pod-handover-sheet')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('input-pod-pin'), { target: { value: '1111' } });
+    fireEvent.click(screen.getByTestId('pod-verify-submit-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pod-error-message')).toHaveTextContent('1 attempt remaining');
+    });
+
+    fireEvent.click(screen.getByTestId('pod-verify-submit-btn'));
+    await waitFor(() => {
+      expect(screen.getByTestId('rider-pod-lockout-alert')).toBeInTheDocument();
+      expect(screen.getByTestId('pod-verify-submit-btn')).toBeDisabled();
+    });
   });
 });

@@ -293,6 +293,7 @@ export const ConfirmationStep: React.FC<ConfirmationStepProps> = ({
                 vendorName: createdDelivery.vendorName,
                 estimatedDeliveryTime: createdDelivery.estimatedDeliveryTime,
                 podVerificationCode: createdDelivery.podVerificationCode,
+                recipientTrackingToken: createdDelivery.recipientTrackingToken,
               })
             )}
             target="_blank"
