@@ -141,5 +141,22 @@ describe('Phase 8: Capacitor Android Packaging & Native Bridge', () => {
       expect(content).toContain('<string name="app_name">OrderFlow</string>');
       expect(content).toContain('<string name="package_name">com.orderflow.app</string>');
     });
+
+    it('aligns CI Node 22, Android Java 21, SDK error propagation, and Gradle release config', () => {
+      const ciWorkflow = fs.readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+      const androidWorkflow = fs.readFileSync(path.join(rootDir, '.github/workflows/android-build.yml'), 'utf8');
+      const appBuildGradle = fs.readFileSync(path.join(rootDir, 'android/app/build.gradle'), 'utf8');
+      const capBuildGradle = fs.readFileSync(path.join(rootDir, 'android/app/capacitor.build.gradle'), 'utf8');
+
+      expect(ciWorkflow).toMatch(/node-version:\s*['"]?22['"]?/);
+      expect(androidWorkflow).toMatch(/node-version:\s*['"]?22['"]?/);
+      expect(androidWorkflow).toMatch(/java-version:\s*['"]21['"]/);
+      expect(capBuildGradle).toContain('JavaVersion.VERSION_21');
+      expect(androidWorkflow).not.toMatch(/sdkmanager --install.*\|\|\s*true\b/);
+      expect(androidWorkflow).toContain('if-no-files-found: error');
+      expect(appBuildGradle).toContain('ANDROID_VERSION_CODE');
+      expect(appBuildGradle).toContain('ANDROID_VERSION_NAME');
+      expect(appBuildGradle).toContain('hasReleaseSigning');
+    });
   });
 });

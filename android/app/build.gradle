@@ -7,8 +7,8 @@ android {
         applicationId "com.orderflow.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode (System.getenv("ANDROID_VERSION_CODE")?.trim()?.isInteger() ? System.getenv("ANDROID_VERSION_CODE").trim().toInteger() : 1)
+        versionName (System.getenv("ANDROID_VERSION_NAME")?.trim() ?: "1.0")
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +16,33 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: System.getenv("KEYSTORE_PATH")
+    def keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD")
+    def keyAliasEnv = System.getenv("ANDROID_KEY_ALIAS") ?: System.getenv("KEY_ALIAS") ?: "orderflow"
+    def keyPasswordEnv = System.getenv("ANDROID_KEY_PASSWORD") ?: System.getenv("KEY_PASSWORD") ?: keystorePassword
+    def hasReleaseSigning = Boolean.valueOf(
+        (keystorePath != null && !keystorePath.trim().isEmpty() && file(keystorePath).exists()) &&
+        (keystorePassword != null && !keystorePassword.trim().isEmpty()) &&
+        (keyPasswordEnv != null && !keyPasswordEnv.trim().isEmpty())
+    )
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            release {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias keyAliasEnv
+                keyPassword keyPasswordEnv
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
