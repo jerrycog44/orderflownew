@@ -13,10 +13,14 @@ import {
   ShieldCheck,
   Camera,
   Clock,
+  Key,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import type { DeliveryRecord } from '../types';
 import { deliveryService } from '../services/deliveryService';
-import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage, getPublicTrackingUrl } from '../lib/whatsapp';
+import { getWhatsAppShareUrl, generateTrackingWhatsAppMessage } from '../lib/whatsapp';
+import { buildPublicTrackingUrl, buildRecipientTrackingUrl } from '../lib/trackingLinks';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { MobileHeader } from '../components/mobile';
@@ -36,17 +40,84 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   const [delivery, setDelivery] = useState<DeliveryRecord | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(id));
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedPublic, setCopiedPublic] = useState(false);
+  const [copiedRecipient, setCopiedRecipient] = useState(false);
+  const [copiedPin, setCopiedPin] = useState(false);
+  const [isRotatingPod, setIsRotatingPod] = useState(false);
+  const [rotateError, setRotateError] = useState<string | null>(null);
+  const [rotateSuccess, setRotateSuccess] = useState<string | null>(null);
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
-  const handleCopyLink = async () => {
+  const handleCopyPublicLink = async () => {
     if (!delivery) return;
-    const url = getPublicTrackingUrl(delivery.trackingCode || delivery.id);
+    const url = buildPublicTrackingUrl(delivery.trackingCode || delivery.id);
     try {
       await navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedPublic(true);
+      setTimeout(() => setCopiedPublic(false), 2000);
     } catch {
       // Fallback
+    }
+  };
+
+  const handleCopyRecipientLink = async () => {
+    if (!delivery?.recipientTrackingToken) return;
+    try {
+      const url = buildRecipientTrackingUrl(
+        delivery.trackingCode || delivery.id,
+        delivery.recipientTrackingToken
+      );
+      await navigator.clipboard.writeText(url);
+      setCopiedRecipient(true);
+      setTimeout(() => setCopiedRecipient(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleCopyPin = async () => {
+    if (!delivery?.podVerificationCode) return;
+    try {
+      await navigator.clipboard.writeText(delivery.podVerificationCode);
+      setCopiedPin(true);
+      setTimeout(() => setCopiedPin(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleRotatePodSecrets = async () => {
+    if (!delivery || isRotatingPod) return;
+    setIsRotatingPod(true);
+    setRotateError(null);
+    setRotateSuccess(null);
+    try {
+      const res = await deliveryService.rotateDeliveryPodSecrets(delivery.id);
+      if (!res.success) {
+        setRotateError(res.error || 'Failed to rotate handover PIN.');
+      } else {
+        setDelivery((prev) =>
+          prev
+            ? {
+                ...prev,
+                podVerificationCode: res.podVerificationCode || prev.podVerificationCode,
+                recipientTrackingToken: res.recipientTrackingToken || prev.recipientTrackingToken,
+                podTokenExpiresAt: res.tokenExpiresAt || prev.podTokenExpiresAt,
+                podTokenRevokedAt: null,
+                podFailedAttempts: 0,
+              }
+            : prev
+        );
+        setNowMs(Date.now());
+        setRotateSuccess(
+          'New PIN and recipient link generated. Previous recipient links were revoked — share the updated PIN or link with the recipient.'
+        );
+      }
+    } catch (err) {
+      setRotateError(err instanceof Error ? err.message : 'Failed to rotate handover PIN.');
+    } finally {
+      setIsRotatingPod(false);
     }
   };
 
@@ -165,6 +236,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         return 1;
       case 'provider_selected':
       case 'awaiting_pickup':
+      case 'picked_up':
         return 2;
       case 'in_transit':
         return 3;
@@ -176,6 +248,14 @@ export const VendorDeliveryDetailPage: React.FC = () => {
   };
 
   const currentStepIdx = getStepStatusIndex(delivery.status);
+  const isTerminal = delivery.status === 'delivered' || delivery.status === 'cancelled';
+  const hasRecordedPayment = Boolean(delivery.paymentMethod && delivery.paymentStatus);
+  const isRecipientTokenExpired = Boolean(
+    !isTerminal &&
+      delivery.podTokenExpiresAt &&
+      !Number.isNaN(new Date(delivery.podTokenExpiresAt).getTime()) &&
+      new Date(delivery.podTokenExpiresAt).getTime() <= nowMs
+  );
 
   return (
     <div className="of-delivery-detail-page">
@@ -189,11 +269,11 @@ export const VendorDeliveryDetailPage: React.FC = () => {
           <button
             type="button"
             className="of-m-icon-btn"
-            onClick={handleCopyLink}
-            title="Copy Tracking Link"
-            aria-label="Copy Tracking Link"
+            onClick={handleCopyPublicLink}
+            title="Copy Public Tracking Link"
+            aria-label="Copy Public Tracking Link"
           >
-            {copied ? <Check size={18} color="#16A34A" /> : <Copy size={18} />}
+            {copiedPublic ? <Check size={18} color="#16A34A" /> : <Copy size={18} />}
           </button>
         }
       />
@@ -256,7 +336,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         })}
       </div>
 
-      {/* Customer Tracking & WhatsApp Sharing Card */}
+      {/* Customer Tracking & Sharing Card */}
       <div
         style={{
           background: 'var(--color-bg-surface)',
@@ -292,7 +372,7 @@ export const VendorDeliveryDetailPage: React.FC = () => {
               Customer Live Tracking
             </span>
             <p style={{ margin: '2px 0 0 0', fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)', fontWeight: 500 }}>
-              Share direct WhatsApp updates and tracking link with <strong>{delivery.recipient.name}</strong> ({delivery.recipient.phone})
+              Share tracking updates with <strong>{delivery.recipient.name}</strong> ({delivery.recipient.phone})
             </p>
           </div>
         </div>
@@ -307,7 +387,8 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                 trackingCode: delivery.trackingCode || delivery.id,
                 vendorName: delivery.vendorName,
                 estimatedDeliveryTime: delivery.estimatedDeliveryTime,
-                podVerificationCode: delivery.podVerificationCode,
+                podVerificationCode: isTerminal ? undefined : delivery.podVerificationCode,
+                recipientTrackingToken: isTerminal ? undefined : delivery.recipientTrackingToken,
               })
             )}
             target="_blank"
@@ -330,15 +411,42 @@ export const VendorDeliveryDetailPage: React.FC = () => {
             Share on WhatsApp
           </a>
 
-          <Button variant="outline" size="sm" onClick={handleCopyLink}>
-            {copied ? <Check size={14} style={{ marginRight: '6px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '6px' }} />}
-            {copied ? 'Link Copied!' : 'Copy Link'}
+          {!isTerminal && delivery.recipientTrackingToken && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyRecipientLink}
+              data-testid="copy-recipient-link-btn"
+            >
+              {copiedRecipient ? (
+                <Check size={14} style={{ marginRight: '6px', color: '#10B981' }} />
+              ) : (
+                <Key size={14} style={{ marginRight: '6px', color: '#059669' }} />
+              )}
+              {copiedRecipient ? 'Recipient Link Copied!' : 'Copy Recipient Link (With PIN)'}
+            </Button>
+          )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCopyPublicLink}
+            data-testid="copy-public-link-btn"
+          >
+            {copiedPublic ? <Check size={14} style={{ marginRight: '6px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '6px' }} />}
+            {copiedPublic ? 'Public Link Copied!' : 'Copy Public Status Link'}
           </Button>
 
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => window.open(getPublicTrackingUrl(delivery.trackingCode || delivery.id), '_blank')}
+            onClick={() =>
+              window.open(
+                buildPublicTrackingUrl(delivery.trackingCode || delivery.id),
+                '_blank',
+                'noopener,noreferrer'
+              )
+            }
           >
             <ExternalLink size={14} style={{ marginRight: '6px' }} />
             Preview
@@ -471,31 +579,53 @@ export const VendorDeliveryDetailPage: React.FC = () => {
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Payment Method & Status
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '4px', flexWrap: 'wrap' }}>
-                <Badge variant={delivery.paymentStatus === 'collected' ? 'success' : 'warning'}>
-                  {delivery.paymentMethod === 'cash_on_delivery'
-                    ? 'Cash on Delivery'
-                    : delivery.paymentMethod === 'pay_at_pickup'
-                    ? 'Pay at Pickup'
-                    : 'Prepaid Online'}
-                </Badge>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
-                  {delivery.paymentStatus === 'collected'
-                    ? '• Fare Collected'
-                    : delivery.paymentStatus === 'remitted'
-                    ? '• Remitted to Vendor'
-                    : '• Pending Collection on Handover'}
-                </span>
-              </div>
+              {hasRecordedPayment ? (
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '4px', flexWrap: 'wrap' }}
+                  data-testid="vendor-payment-method-badge"
+                >
+                  <Badge
+                    variant={
+                      delivery.paymentStatus === 'collected' || delivery.paymentStatus === 'remitted'
+                        ? 'success'
+                        : 'warning'
+                    }
+                  >
+                    {delivery.paymentMethod === 'cash_on_delivery'
+                      ? 'Cash on Delivery'
+                      : delivery.paymentMethod === 'pay_at_pickup'
+                      ? 'Pay at Pickup'
+                      : 'Prepaid Online'}
+                  </Badge>
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                    {delivery.paymentStatus === 'collected'
+                      ? '• Fare Collected'
+                      : delivery.paymentStatus === 'remitted'
+                      ? '• Remitted to Vendor'
+                      : '• Pending Collection on Handover'}
+                  </span>
+                </div>
+              ) : (
+                <div
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: '4px', flexWrap: 'wrap' }}
+                  data-testid="legacy-payment-notice"
+                >
+                  <Badge variant="neutral">Not Recorded (Legacy Order)</Badge>
+                  <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
+                    • Payment terms were not recorded for this historical order
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* 4-Digit Handover PIN */}
+            {/* 4-Digit Handover PIN & Secret Controls */}
             <div>
               <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', textTransform: 'uppercase', fontWeight: 600 }}>
                 Recipient Verification PIN
               </span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginTop: '4px', flexWrap: 'wrap' }}>
                 <span
+                  data-testid="vendor-pod-pin-value"
                   style={{
                     fontFamily: 'monospace',
                     fontSize: 'var(--font-size-xl)',
@@ -508,12 +638,92 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                     border: '1px solid rgba(16, 185, 129, 0.25)',
                   }}
                 >
-                  {delivery.podVerificationCode || '----'}
+                  {isTerminal ? 'USED' : delivery.podVerificationCode || '----'}
                 </span>
-                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)' }}>
-                  Recipient shares this with the courier to complete delivery.
-                </span>
+
+                {!isTerminal && delivery.podVerificationCode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyPin}
+                    data-testid="copy-pod-pin-btn"
+                  >
+                    {copiedPin ? <Check size={14} style={{ marginRight: '4px', color: '#10B981' }} /> : <Copy size={14} style={{ marginRight: '4px' }} />}
+                    {copiedPin ? 'PIN Copied' : 'Copy PIN'}
+                  </Button>
+                )}
+
+                {!isTerminal && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleRotatePodSecrets}
+                    isLoading={isRotatingPod}
+                    data-testid="rotate-pod-secrets-btn"
+                  >
+                    <RefreshCw size={14} style={{ marginRight: '4px' }} />
+                    Rotate PIN / Revoke Link
+                  </Button>
+                )}
               </div>
+
+              {!isTerminal && (delivery.podFailedAttempts ?? 0) >= 5 && (
+                <p
+                  role="alert"
+                  data-testid="pod-lockout-alert"
+                  style={{
+                    margin: '6px 0 0 0',
+                    fontSize: 'var(--font-size-xs)',
+                    color: '#DC2626',
+                    fontWeight: 600,
+                  }}
+                >
+                  Handover PIN is locked after 5 failed attempts. Click &ldquo;Rotate PIN / Revoke Link&rdquo; and share the new PIN with the recipient.
+                </p>
+              )}
+
+              {isRecipientTokenExpired && (
+                <p
+                  role="alert"
+                  data-testid="pod-token-expired-alert"
+                  style={{
+                    margin: '6px 0 0 0',
+                    fontSize: 'var(--font-size-xs)',
+                    color: '#D97706',
+                    fontWeight: 600,
+                  }}
+                >
+                  The recipient tracking link has expired (7-day window). Click &ldquo;Rotate PIN / Revoke Link&rdquo; to issue a fresh PIN and link.
+                </p>
+              )}
+
+              {rotateSuccess && (
+                <p
+                  role="status"
+                  data-testid="pod-rotate-success-notice"
+                  style={{
+                    margin: '6px 0 0 0',
+                    fontSize: 'var(--font-size-xs)',
+                    color: '#059669',
+                    fontWeight: 600,
+                  }}
+                >
+                  {rotateSuccess}
+                </p>
+              )}
+
+              {rotateError && (
+                <p
+                  role="alert"
+                  style={{ margin: '6px 0 0 0', fontSize: 'var(--font-size-xs)', color: '#DC2626' }}
+                >
+                  {rotateError}
+                </p>
+              )}
+
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-secondary)', margin: '6px 0 0 0' }}>
+                Recipient shares this 4-digit PIN with the courier at handover. Rotating generates a new PIN and revokes any previously shared recipient link.
+              </p>
             </div>
 
             {/* Photo Proof Requirement / Proof Image */}
@@ -535,8 +745,9 @@ export const VendorDeliveryDetailPage: React.FC = () => {
                       src={delivery.podPhotoUrl}
                       alt="Proof of delivery handover"
                       style={{ width: '100%', height: '160px', objectFit: 'cover', cursor: 'pointer' }}
-                      onClick={() => window.open(delivery.podPhotoUrl, '_blank')}
-                      title="Click to view full photo"
+                      onClick={() => setIsPhotoModalOpen(true)}
+                      title="Click to inspect full handover photo"
+                      data-testid="vendor-pod-photo-thumbnail"
                     />
                   </div>
                   {delivery.podCompletedAt && (
@@ -596,6 +807,69 @@ export const VendorDeliveryDetailPage: React.FC = () => {
         </div>
       </div>
     </div>
+
+    {/* Inline Lightbox Modal for Handover Photo (supports both https:// and data:image/* URLs) */}
+    {isPhotoModalOpen && delivery.podPhotoUrl && (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Proof of delivery photo preview"
+        data-testid="pod-photo-lightbox"
+        onClick={() => setIsPhotoModalOpen(false)}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1000,
+          backgroundColor: 'rgba(15, 23, 42, 0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 'var(--space-4)',
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'relative',
+            maxWidth: '720px',
+            width: '100%',
+            background: 'var(--color-bg-surface)',
+            borderRadius: 'var(--radius-lg)',
+            padding: 'var(--space-4)',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)' }}>
+            <strong style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-primary)' }}>
+              Handover Photo Proof — {delivery.trackingCode || delivery.id}
+            </strong>
+            <button
+              type="button"
+              onClick={() => setIsPhotoModalOpen(false)}
+              aria-label="Close photo preview"
+              style={{
+                border: 'none',
+                background: 'var(--color-bg-subtle)',
+                borderRadius: 'var(--radius-full)',
+                width: '32px',
+                height: '32px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <img
+            src={delivery.podPhotoUrl}
+            alt="Full proof of delivery handover"
+            style={{ width: '100%', maxHeight: '75vh', objectFit: 'contain', borderRadius: 'var(--radius-md)' }}
+          />
+        </div>
+      </div>
+    )}
   </div>
   );
 };

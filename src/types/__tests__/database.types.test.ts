@@ -66,6 +66,40 @@ function typeAssertions() {
   const s: DeliveryStatus = 'opportunity_sent';
   const dbS: Tables<'deliveries'>['status'] = s;
   void dbS;
+
+  // Migration 005: POD secrets table, nullable legacy payment columns, and hardened RPCs.
+  const podSecrets: Tables<'delivery_pod_secrets'> = {
+    delivery_id: 'del-1',
+    pin_code: '4829',
+    recipient_token: 'a'.repeat(64),
+    token_expires_at: '2026-04-17T00:00:00Z',
+    token_revoked_at: null,
+    created_at: '2026-04-10T00:00:00Z',
+    updated_at: '2026-04-10T00:00:00Z',
+  };
+  void podSecrets;
+
+  const legacyPaymentMethod: Tables<'deliveries'>['payment_method'] = null;
+  const legacyPaymentStatus: Tables<'deliveries'>['payment_status'] = null;
+  void legacyPaymentMethod;
+  void legacyPaymentStatus;
+
+  // @ts-expect-error — invalid payment_method enum value
+  void supabase.from('deliveries').update({ payment_method: 'crypto' }).eq('id', 'x');
+
+  void supabase.rpc('get_public_tracking', {
+    p_tracking_code: 'OF-123456',
+    p_recipient_token: 'b'.repeat(64),
+  });
+  void supabase.rpc('complete_delivery_with_pod', {
+    p_delivery_id: 'del-1',
+    p_verification_code: '4829',
+    p_photo_url: 'data:image/jpeg;base64,abc',
+  });
+  void supabase.rpc('rotate_delivery_pod_secrets', { p_delivery_id: 'del-1' });
+
+  // @ts-expect-error — dropped in Migration 005
+  void supabase.rpc('has_active_dispatch_opportunity', { p_delivery_id: 'del-1' });
 }
 void typeAssertions;
 

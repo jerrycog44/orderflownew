@@ -35,3 +35,107 @@ jobs:
 
       - name: Production Bundle Build
         run: npm run build
+
+  postgres-security:
+    name: Real PostgreSQL 15 Role, RLS & Concurrency Verification
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci_password
+          POSTGRES_DB: orderflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d orderflow_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres_ci_password
+      PGDATABASE: orderflow_test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Bootstrap Supabase roles & apply Migrations 001-004 + Legacy Fixture
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/000_supabase_local_bootstrap.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/001_initial_schema.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/002_fix_auth_flow.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/003_dispatch_concurrency_and_security.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/004_atomic_dispatch_and_security_hardening.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/004b_pre_migration_005_fixture.sql
+
+      - name: Apply Migration 005 (Initial + Idempotent Re-Apply)
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/005_pod_payments_and_rls_hardening.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/005_pod_payments_and_rls_hardening.sql
+
+      - name: Execute Non-Superuser Role, Capability, POD, Payment & Tracking Verification
+        run: |
+          psql -v ON_ERROR_STOP=1 -f supabase/tests/005_postgres_security_verify.sql
+
+      - name: Two-Session Concurrent FOR UPDATE Dispatch Race Verification
+        run: |
+          RACE_DELIVERY_ID=$(psql -t -A -v ON_ERROR_STOP=1 -c "
+            SET ROLE authenticator;
+            SET LOCAL ROLE authenticated;
+            SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+            SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000000a', true);
+            SELECT (public.create_delivery_transactional(
+              'OF-RACE99', '00000000-0000-4000-8000-00000000000a', NULL,
+              '1 Dugbe', 'Ibadan', '2 Bodija', 'Ibadan',
+              'Race Buyer', '+2348031112222', 'pending', 'manual', 2500, 'Today',
+              'Race Parcel', 'General', 'parcel', 1, 1.0, 10, 10, 10, false, NULL, NULL,
+              '00000000-0000-4000-8000-00000000000a', NULL,
+              'cash_on_delivery'::public.payment_method_enum, false
+            ) ->> 'id');
+          " | tail -n 1)
+
+          psql -t -A -v ON_ERROR_STOP=1 -c "
+            BEGIN;
+            SET LOCAL ROLE authenticator;
+            SET LOCAL ROLE authenticated;
+            SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+            SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+            SELECT pg_sleep(0.05);
+            SELECT public.accept_delivery_opportunity('${RACE_DELIVERY_ID}'::uuid, '00000000-0000-4000-8000-000000000001'::uuid);
+            COMMIT;
+          " > /tmp/race_rider_1.out &
+          PID1=$!
+
+          psql -t -A -v ON_ERROR_STOP=1 -c "
+            BEGIN;
+            SET LOCAL ROLE authenticator;
+            SET LOCAL ROLE authenticated;
+            SELECT set_config('request.jwt.claim.role', 'authenticated', true);
+            SELECT set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+            SELECT pg_sleep(0.05);
+            SELECT public.accept_delivery_opportunity('${RACE_DELIVERY_ID}'::uuid, '00000000-0000-4000-8000-000000000002'::uuid);
+            COMMIT;
+          " > /tmp/race_rider_2.out &
+          PID2=$!
+
+          wait "$PID1"
+          wait "$PID2"
+
+          COMBINED=$(cat /tmp/race_rider_1.out /tmp/race_rider_2.out)
+          echo "$COMBINED"
+          WINNERS=$(echo "$COMBINED" | grep -Ec '"success":[[:space:]]*true' || true)
+          LOSERS=$(echo "$COMBINED" | grep -Ec '"already_assigned"' || true)
+          if [ "$WINNERS" -ne 1 ] || [ "$LOSERS" -ne 1 ]; then
+            echo "CONCURRENCY FAIL: Expected 1 winner and 1 already_assigned loser, got winners=$WINNERS losers=$LOSERS"
+            exit 1
+          fi

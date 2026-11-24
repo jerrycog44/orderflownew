@@ -30,14 +30,17 @@ export function formatWhatsAppPhone(phone: string): string {
   return cleaned.replace(/\D/g, '');
 }
 
+import {
+  buildPublicTrackingUrl,
+  buildRecipientTrackingUrl,
+  isValidRecipientToken,
+} from './trackingLinks';
+
 /**
  * Generates the full public URL for tracking a delivery.
  */
 export function getPublicTrackingUrl(trackingCode: string): string {
-  const base = typeof window !== 'undefined' && window.location?.origin
-    ? window.location.origin
-    : 'https://orderflow.ng';
-  return `${base}/track/${encodeURIComponent(trackingCode.trim())}`;
+  return buildPublicTrackingUrl(trackingCode);
 }
 
 export interface WhatsAppMessageParams {
@@ -47,10 +50,14 @@ export interface WhatsAppMessageParams {
   vendorName?: string;
   estimatedDeliveryTime?: string;
   podVerificationCode?: string;
+  recipientTrackingToken?: string | null;
+  includeRawPin?: boolean;
 }
 
 /**
  * Composes a clear, professional message for a merchant to send to their customer via WhatsApp.
+ * When a valid `recipientTrackingToken` is provided, embeds the Case B `#pin_token=` capability
+ * link so the recipient opens their authorized handover PIN & COD payment screen directly.
  */
 export function generateTrackingWhatsAppMessage(params: WhatsAppMessageParams): string {
   const {
@@ -60,14 +67,19 @@ export function generateTrackingWhatsAppMessage(params: WhatsAppMessageParams): 
     vendorName,
     estimatedDeliveryTime,
     podVerificationCode,
+    recipientTrackingToken,
+    includeRawPin = true,
   } = params;
 
-  const trackingUrl = getPublicTrackingUrl(trackingCode);
+  const trackingUrl = isValidRecipientToken(recipientTrackingToken)
+    ? buildRecipientTrackingUrl(trackingCode, recipientTrackingToken)
+    : buildPublicTrackingUrl(trackingCode);
   const senderGreeting = vendorName ? `from *${vendorName}*` : '';
   const estTransit = estimatedDeliveryTime ? `\n⏱ *Estimated Transit:* ${estimatedDeliveryTime}` : '';
-  const pinSection = podVerificationCode
-    ? `\n\n🔐 *Delivery Verification PIN:* ${podVerificationCode}\n(Please share this 4-digit code with the courier only when receiving your package)`
-    : '';
+  const pinSection =
+    includeRawPin && podVerificationCode
+      ? `\n\n🔐 *Delivery Verification PIN:* ${podVerificationCode}\n(Please share this 4-digit code with the courier only when receiving your package)`
+      : '';
 
   return (
     `Hello ${recipientName || 'there'}! 👋\n\n` +

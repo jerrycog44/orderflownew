@@ -53,6 +53,46 @@ describe('Phase 3: WhatsApp Workflows & Sharing Helpers', () => {
       expect(message).toContain('/track/OF-IBD-9042');
       expect(message).toContain('Same Day (2–4 hours)');
     });
+
+    it('embeds recipient #pin_token capability URL when a valid 64-hex token is provided', () => {
+      const token = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+      const message = generateTrackingWhatsAppMessage({
+        recipientName: 'Chioma Okeke',
+        productName: 'Designer Leather Handbag',
+        trackingCode: 'OF-IBD-9042',
+        vendorName: 'Kemi Boutique',
+        podVerificationCode: '4892',
+        recipientTrackingToken: token,
+      });
+
+      expect(message).toContain(`/track/OF-IBD-9042#pin_token=${token}`);
+      expect(message).toContain('4892');
+    });
+
+    it('supports omitting raw PIN when includeRawPin is false and falls back cleanly on invalid token', () => {
+      const token = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+      const linkOnlyMsg = generateTrackingWhatsAppMessage({
+        recipientName: 'Chioma Okeke',
+        productName: 'Designer Leather Handbag',
+        trackingCode: 'OF-IBD-9042',
+        podVerificationCode: '4892',
+        recipientTrackingToken: token,
+        includeRawPin: false,
+      });
+
+      expect(linkOnlyMsg).toContain(`/track/OF-IBD-9042#pin_token=${token}`);
+      expect(linkOnlyMsg).not.toContain('4892');
+
+      const invalidTokenMsg = generateTrackingWhatsAppMessage({
+        recipientName: 'Chioma Okeke',
+        productName: 'Designer Leather Handbag',
+        trackingCode: 'OF-IBD-9042',
+        recipientTrackingToken: 'bad-token',
+      });
+
+      expect(invalidTokenMsg).toContain('/track/OF-IBD-9042');
+      expect(invalidTokenMsg).not.toContain('#pin_token=');
+    });
   });
 
   describe('getWhatsAppShareUrl', () => {

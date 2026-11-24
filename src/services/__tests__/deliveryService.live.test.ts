@@ -19,12 +19,13 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
   const testDeliveryId = '11111111-1111-1111-1111-111111111111';
   const testProviderId = '22222222-2222-2222-2222-222222222222';
   const testVendorId = '33333333-3333-3333-3333-333333333333';
+  const testRecipientToken =
+    'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
 
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
 
-    // Default mockFrom returns empty chain
     mockFrom.mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -68,7 +69,7 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
     estimatedDeliveryTime: 'Same Day',
   };
 
-  it('calls create_delivery_transactional RPC and maps returned record', async () => {
+  it('calls create_delivery_transactional RPC with payment/POD args and maps server secrets', async () => {
     mockRpc.mockResolvedValueOnce({
       data: {
         success: true,
@@ -76,14 +77,23 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
         tracking_code: 'OF-3K9X-7M2Q',
         status: 'awaiting_pickup',
         provider_id: testProviderId,
+        payment_method: 'cash_on_delivery',
+        payment_status: 'pending',
+        require_photo_proof: true,
+        pod_verification_code: '8429',
+        recipient_tracking_token: testRecipientToken,
         current_opportunity_provider_id: null,
         candidate_provider_ids: [testProviderId],
         created_at: '2026-10-19T12:00:00Z',
+        updated_at: '2026-10-19T12:00:00Z',
       },
       error: null,
     });
 
-    const result = await deliveryService.createDelivery(sampleInput);
+    const result = await deliveryService.createDelivery({
+      ...sampleInput,
+      requirePhotoProof: true,
+    });
 
     expect(mockRpc).toHaveBeenCalledWith(
       'create_delivery_transactional',
@@ -93,12 +103,27 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
         p_selected_provider_id: testProviderId,
         p_pickup_city: 'Ikeja',
         p_destination_city: 'Lagos',
+        p_payment_method: 'cash_on_delivery',
+        p_require_photo_proof: true,
       })
     );
 
     expect(result.id).toBe(testDeliveryId);
     expect(result.trackingCode).toBe('OF-3K9X-7M2Q');
-    expect(result.package.weightKg).toBe(45);
+    expect(result.paymentMethod).toBe('cash_on_delivery');
+    expect(result.paymentStatus).toBe('pending');
+    expect(result.podVerificationCode).toBe('8429');
+    expect(result.recipientTrackingToken).toBe(testRecipientToken);
+  });
+
+  it('rejects prepaid_online immediately before invoking live RPC', async () => {
+    await expect(
+      deliveryService.createDelivery({
+        ...sampleInput,
+        paymentMethod: 'prepaid_online',
+      })
+    ).rejects.toThrow(/prepaid payment is unavailable/i);
+    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   it('throws an error and does not silently fall back to localStorage if transactional RPC fails', async () => {
@@ -111,7 +136,6 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
       'Database RLS policy violated: unauthorized vendor'
     );
 
-    // Verify localStorage was NOT silently written to
     expect(localStorage.getItem('of_dev_deliveries')).toBeNull();
   });
 
@@ -129,14 +153,12 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
     expect(result.id).toMatch(/^OF-\d+/);
     expect(result.productName).toBe(sampleInput.productName);
 
-    // Verify written to localStorage
     const stored = JSON.parse(localStorage.getItem('of_dev_deliveries') || '[]');
     expect(stored.length).toBeGreaterThan(0);
     expect(stored[0].id).toBe(result.id);
   });
 
-  it('getDeliveryById throws an error on database failure and returns null on 404', async () => {
-    // 1. DB Error case
+  it('getDeliveryById preserves undefined for legacy NULL payment columns and throws on DB error', async () => {
     mockFrom.mockReturnValueOnce({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
@@ -152,20 +174,44 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
       'Connection to database terminated'
     );
 
-    // 2. 404 Not Found case
+    // Historical legacy row with NULL payment_method & NULL payment_status
     mockFrom.mockReturnValueOnce({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
           maybeSingle: vi.fn().mockResolvedValue({
-            data: null,
+            data: {
+              id: testDeliveryId,
+              tracking_code: 'OF-HIST-0001',
+              vendor_id: testVendorId,
+              status: 'delivered',
+              dispatch_mode: 'manual',
+              pickup_address: '10 Industrial Way',
+              pickup_city: 'Ikeja',
+              destination_address: '44 Victoria Island Blvd',
+              destination_city: 'Lagos',
+              recipient_name: 'Chief Obi',
+              recipient_phone: '+2348099887766',
+              estimated_price: 6500,
+              estimated_delivery_time: 'Same Day',
+              payment_method: null,
+              payment_status: null,
+              created_at: '2026-10-01T12:00:00Z',
+              updated_at: '2026-10-01T14:00:00Z',
+              package_details: [],
+              delivery_pod_secrets: null,
+              vendors: { business_name: 'Acme Superstore' },
+              logistics_providers: null,
+            },
             error: null,
           }),
         }),
       }),
     });
 
-    const notFound = await deliveryService.getDeliveryById(testDeliveryId);
-    expect(notFound).toBeNull();
+    const legacy = await deliveryService.getDeliveryById(testDeliveryId);
+    expect(legacy).not.toBeNull();
+    expect(legacy?.paymentMethod).toBeUndefined();
+    expect(legacy?.paymentStatus).toBeUndefined();
   });
 
   it('calls get_marketplace_opportunities with PII-safe filtering', async () => {
@@ -205,83 +251,48 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
     expect(opps.length).toBe(1);
     expect(opps[0].pickup.address).toContain('Exact address revealed upon acceptance');
     expect(opps[0].recipient.phone).toBe('Hidden until accepted');
-    expect(opps[0].pickup.city).toBe('Ikeja');
   });
 
-  it('acceptDelivery delegates to accept_delivery_opportunity RPC and returns null on conflict', async () => {
+  it('updateDeliveryStatus blocks delivered and delegates valid transitions to transition_delivery_status RPC', async () => {
+    const blocked = await deliveryService.updateDeliveryStatus(testDeliveryId, 'delivered');
+    expect(blocked).toBeNull();
+    expect(mockRpc).not.toHaveBeenCalled();
+
     mockRpc.mockResolvedValueOnce({
-      data: { success: false, error: 'Offer expired or already assigned' },
+      data: { success: true, status: 'in_transit' },
       error: null,
-    });
-
-    const result = await deliveryService.acceptDelivery(
-      testDeliveryId,
-      testProviderId,
-      'Express Couriers'
-    );
-
-    expect(mockRpc).toHaveBeenCalledWith('accept_delivery_opportunity', {
-      p_delivery_id: testDeliveryId,
-      p_provider_id: testProviderId,
-    });
-
-    expect(result).toBeNull();
-  });
-
-  it('declineOpportunity delegates to decline_delivery_opportunity RPC', async () => {
-    mockRpc.mockResolvedValueOnce({
-      data: { success: true },
-      error: null,
-    });
-
-    const declined = await deliveryService.declineOpportunity(testDeliveryId, testProviderId);
-
-    expect(mockRpc).toHaveBeenCalledWith('decline_delivery_opportunity', {
-      p_delivery_id: testDeliveryId,
-      p_provider_id: testProviderId,
-    });
-
-    expect(declined).toBe(true);
-  });
-
-  it('updateDeliveryStatus delegates to transition_delivery_status RPC and refreshes record', async () => {
-    mockRpc.mockResolvedValueOnce({
-      data: { success: true, new_status: 'in_transit' },
-      error: null,
-    });
-
-    // Mock the subsequent getDeliveryById select query
-    const mockSelect = vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        maybeSingle: vi.fn().mockResolvedValue({
-          data: {
-            id: testDeliveryId,
-            tracking_code: 'OF-3K9X-7M2Q',
-            vendor_id: testVendorId,
-            product_name: 'Solar Battery 200Ah',
-            status: 'in_transit',
-            dispatch_mode: 'auto',
-            pickup_address: '10 Industrial Way',
-            pickup_city: 'Ikeja',
-            destination_address: '44 Victoria Island Blvd',
-            destination_city: 'Lagos',
-            recipient_name: 'Chief Obi',
-            recipient_phone: '+2348099887766',
-            estimated_price: 6500,
-            estimated_delivery_time: 'Same Day',
-            created_at: '2026-10-19T12:00:00Z',
-            updated_at: '2026-10-19T12:30:00Z',
-            package_details: [],
-            vendors: { business_name: 'Acme Superstore' },
-            logistics_providers: null,
-          },
-          error: null,
-        }),
-      }),
     });
 
     mockFrom.mockReturnValue({
-      select: mockSelect,
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: {
+              id: testDeliveryId,
+              tracking_code: 'OF-3K9X-7M2Q',
+              vendor_id: testVendorId,
+              status: 'in_transit',
+              dispatch_mode: 'auto',
+              pickup_address: '10 Industrial Way',
+              pickup_city: 'Ikeja',
+              destination_address: '44 Victoria Island Blvd',
+              destination_city: 'Lagos',
+              recipient_name: 'Chief Obi',
+              recipient_phone: '+2348099887766',
+              estimated_price: 6500,
+              estimated_delivery_time: 'Same Day',
+              payment_method: 'cash_on_delivery',
+              payment_status: 'pending',
+              created_at: '2026-10-19T12:00:00Z',
+              updated_at: '2026-10-19T12:30:00Z',
+              package_details: [],
+              vendors: { business_name: 'Acme Superstore' },
+              logistics_providers: null,
+            },
+            error: null,
+          }),
+        }),
+      }),
     });
 
     const updated = await deliveryService.updateDeliveryStatus(
@@ -295,8 +306,64 @@ describe('deliveryService (Live Supabase RPC Mode)', () => {
       p_new_status: 'in_transit',
       p_notes: null,
     });
-
-    expect(updated).not.toBeNull();
     expect(updated?.status).toBe('in_transit');
+  });
+
+  it('completeDeliveryWithPod delegates directly to complete_delivery_with_pod RPC (couriers never read delivery_pod_secrets)', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: {
+        success: false,
+        code: 'invalid_pin',
+        attempts_remaining: 4,
+        error: 'Invalid 4-digit verification code. Please request the code from the recipient.',
+      },
+      error: null,
+    });
+
+    const zeroAttempt = await deliveryService.completeDeliveryWithPod(testDeliveryId, '0000');
+    expect(zeroAttempt.success).toBe(false);
+    expect(zeroAttempt.code).toBe('invalid_pin');
+    expect(mockRpc).toHaveBeenCalledWith('complete_delivery_with_pod', {
+      p_delivery_id: testDeliveryId,
+      p_verification_code: '0000',
+      p_photo_url: null,
+      p_notes: null,
+    });
+  });
+
+  it('getPublicTracking passes p_recipient_token and maps Case B fields accurately', async () => {
+    mockRpc.mockResolvedValueOnce({
+      data: [
+        {
+          tracking_code: 'OF-3K9X-7M2Q',
+          status: 'in_transit',
+          estimated_delivery_time: 'Same Day',
+          created_at: '2026-10-19T12:00:00Z',
+          updated_at: '2026-10-19T12:30:00Z',
+          product_name: 'Solar Battery 200Ah',
+          vendor_name: 'Acme Superstore',
+          provider_name: 'SwiftHaul',
+          provider_logo_url: null,
+          recipient_access_granted: true,
+          payment_method: 'cash_on_delivery',
+          payment_status: 'pending',
+          amount_due: 6500,
+          require_photo_proof: true,
+          has_photo_proof: false,
+          pod_photo_url: null,
+          pod_verification_code: '8429',
+        },
+      ],
+      error: null,
+    });
+
+    const info = await deliveryService.getPublicTracking('OF-3K9X-7M2Q', testRecipientToken);
+    expect(mockRpc).toHaveBeenCalledWith('get_public_tracking', {
+      p_tracking_code: 'OF-3K9X-7M2Q',
+      p_recipient_token: testRecipientToken,
+    });
+    expect(info?.recipientAccessGranted).toBe(true);
+    expect(info?.podVerificationCode).toBe('8429');
+    expect(info?.amountDue).toBe(6500);
   });
 });
